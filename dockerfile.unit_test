@@ -1,4 +1,4 @@
-# Dockerfile for unit tests
+# Dockerfile.test
 FROM python:3.9-slim
 
 WORKDIR /app
@@ -14,4 +14,4 @@ COPY . .
 RUN mkdir -p /app/test-results
 
 # Set the default command to run tests
-CMD ["pytest", "tests/unit/"]
+CMD ["pytest", "tests/"]
