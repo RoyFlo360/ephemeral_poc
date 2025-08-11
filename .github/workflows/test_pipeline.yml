@@ -1,0 +1,99 @@
+name: Docker Ephemeral Tests
+
+on: [push, pull_request]
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build unit test image
+        run: docker build -f Dockerfile.unit -t unit-test .
+
+      - name: Run unit tests
+        run: |
+          docker run \
+            --rm \
+            -v $(pwd)/test-results/unit:/app/test-results \
+            unit-test \
+            pytest --junitxml=test-results/unit/results.xml tests/unit/
+
+      - name: Publish unit test results
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: unit-test-results
+          path: test-results/unit/results.xml
+
+#  integration-tests:
+#    needs: unit-tests
+#    runs-on: ubuntu-latest
+#    services:
+#      postgres:
+#        image: postgres:14
+#        env:
+#          POSTGRES_PASSWORD: test
+#          POSTGRES_USER: test
+#          POSTGRES_DB: test
+#        ports:
+#          - 5432:5432
+#        options: >-
+#          --health-cmd pg_isready
+#          --health-interval 10s
+#          --health-timeout 5s
+#          --health-retries 5
+#
+#    steps:
+#      - uses: actions/checkout@v4
+#
+#      - name: Run integration tests
+#        run: |
+#          mkdir -p test-results/integration
+#          docker-compose -f docker-compose.integration.yml up \
+#            --build \
+#            --abort-on-container-exit \
+#            --exit-code-from app
+#
+#      - name: Save integration test results
+#        if: always()
+#        run: |
+#          docker cp $(docker ps -aqf "name=app"):/app/test-results/integration/results.xml test-results/integration/
+#
+#      - name: Publish integration test results
+#        uses: actions/upload-artifact@v3
+#        if: always()
+#        with:
+#          name: integration-test-results
+#          path: test-results/integration/results.xml
+
+  report:
+    needs: [unit-tests]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v3
+        with:
+          name: unit-test-results
+          path: test-results/unit
+      - uses: actions/download-artifact@v3
+#        with:
+#          name: integration-test-results
+#          path: test-results/integration
+
+      - name: Generate Markdown report
+        run: |
+          echo "## Test Summary" >> report.md
+          echo "### Unit Tests" >> report.md
+          echo '```xml' >> report.md
+          cat test-results/unit/results.xml >> report.md
+          echo '```' >> report.md
+#          echo "### Integration Tests" >> report.md
+#          echo '```xml' >> report.md
+#          cat test-results/integration/results.xml >> report.md
+#          echo '```' >> report.md
+
+      - name: Upload report
+        uses: actions/upload-artifact@v3
+        with:
+          name: test-report
+          path: report.md
