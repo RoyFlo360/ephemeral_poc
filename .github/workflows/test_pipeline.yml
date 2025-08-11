@@ -9,7 +9,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Build unit test image
-        run: docker build -f Dockerfile.unit -t unit-test .
+        run: docker build -f dockerfile.unit_test -t unit-test .
 
       - name: Run unit tests
         run: |

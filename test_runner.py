@@ -1,12 +1,11 @@
 # test_runner.py
 import docker
 import sys
-import os
 from typing import Tuple
 
 def run_tests_in_ephemeral_container(
     image_name: str = "myephemeral-test",
-    dockerfile_path: str = "C:\\repos\\ephimeral_cont\\dockerfile.test",
+    dockerfile_path: str = "C:\\repos\\ephemeral_poc\\dockerfile.unit_test",
     build_context: str = ".",
     container_timeout: int = 600
 ) -> Tuple[bool, str]:
