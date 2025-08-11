@@ -13,11 +13,12 @@ jobs:
 
       - name: Run unit tests
         run: |
+          mkdir -p test-results/unit
           docker run \
             --rm \
             -v $(pwd)/test-results/unit:/app/test-results \
             unit-test \
-            pytest --junitxml=/app/test-results/unit/results.xml tests/unit/
+            pytest --junitxml=/app/test-results/results.xml tests/unit/
 
       - name: Publish unit test results
         uses: actions/upload-artifact@v4  # Updated from v3 → v4
