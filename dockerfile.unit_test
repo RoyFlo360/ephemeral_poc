@@ -11,4 +11,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Set the default command to run tests
+RUN mkdir -p /app/test-results
 CMD ["pytest", "tests/"]
