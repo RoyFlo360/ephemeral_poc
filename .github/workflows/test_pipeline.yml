@@ -104,10 +104,16 @@ jobs:
             echo "" >> test-summary.md
             
             # Extract test counts from XML - use more reliable parsing
-            total_tests=$(grep -c '<testcase' test-results/unit/results.xml || echo "0")
-            failed_tests=$(grep -c '<failure' test-results/unit/results.xml || echo "0")
-            error_tests=$(grep -c '<error' test-results/unit/results.xml || echo "0")
-            skipped_tests=$(grep -c '<skipped' test-results/unit/results.xml || echo "0")
+            total_tests=$(grep -c '<testcase' test-results/unit/results.xml 2>/dev/null || echo "0")
+            failed_tests=$(grep -c '<failure' test-results/unit/results.xml 2>/dev/null || echo "0")
+            error_tests=$(grep -c '<error' test-results/unit/results.xml 2>/dev/null || echo "0")
+            skipped_tests=$(grep -c '<skipped' test-results/unit/results.xml 2>/dev/null || echo "0")
+            
+            # Ensure all variables are numbers
+            total_tests=${total_tests:-0}
+            failed_tests=${failed_tests:-0}
+            error_tests=${error_tests:-0}
+            skipped_tests=${skipped_tests:-0}
             
             # Debug: Show parsed counts
             echo "Debug: total=$total_tests, failed=$failed_tests, error=$error_tests, skipped=$skipped_tests" >&2
@@ -142,7 +148,9 @@ jobs:
             if [ "$skipped_tests" -gt 0 ]; then
               echo "- **Skipped:** $skipped_tests" >> test-summary.md
             fi
-            if [ "$total_tests" -gt 0 ]; then
+            
+            # Calculate success rate safely
+            if [ "$total_tests" -gt 0 ] && [ "$total_tests" -ne 0 ]; then
               success_rate=$(( (passed_tests * 100) / total_tests ))
               echo "- **Success Rate:** $success_rate%" >> test-summary.md
             else
@@ -158,7 +166,7 @@ jobs:
               if [ "$failed_tests" -gt 0 ]; then
                 echo "#### ❌ Test Failures:" >> test-summary.md
                 # Use a simpler approach to extract test names
-                grep -A 5 '<testcase' test-results/unit/results.xml | while IFS= read -r line; do
+                grep -A 5 '<testcase' test-results/unit/results.xml 2>/dev/null | while IFS= read -r line; do
                   if [[ $line == *"name="* ]]; then
                     test_name=$(echo "$line" | sed -n 's/.*name="\([^"]*\)".*/\1/p')
                     if [ ! -z "$test_name" ]; then
