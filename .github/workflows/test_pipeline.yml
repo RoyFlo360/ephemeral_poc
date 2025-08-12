@@ -104,26 +104,45 @@ jobs:
             echo "" >> test-summary.md
             
             # Extract test counts from XML - use more reliable parsing
-            # Count all testcase elements for total tests
-            total_tests=$(grep -c '<testcase' test-results/unit/results.xml 2>/dev/null || echo "0")
-            failed_tests=$(grep -c '<failure' test-results/unit/results.xml 2>/dev/null || echo "0")
-            error_tests=$(grep -c '<error' test-results/unit/results.xml 2>/dev/null || echo "0")
-            skipped_tests=$(grep -c '<skipped' test-results/unit/results.xml 2>/dev/null || echo "0")
+            # First try to get counts from testsuite attributes (most reliable)
+            suite_total=$(grep -o 'tests="[0-9]*"' test-results/unit/results.xml 2>/dev/null | sed 's/tests="\([0-9]*\)"/\1/' || echo "0")
+            suite_failures=$(grep -o 'failures="[0-9]*"' test-results/unit/results.xml 2>/dev/null | sed 's/failures="\([0-9]*\)"/\1/' || echo "0")
+            suite_errors=$(grep -o 'errors="[0-9]*"' test-results/unit/results.xml 2>/dev/null | sed 's/errors="\([0-9]*\)"/\1/' || echo "0")
+            suite_skipped=$(grep -o 'skipped="[0-9]*"' test-results/unit/results.xml 2>/dev/null | sed 's/skipped="\([0-9]*\)"/\1/' || echo "0")
             
-            # Debug: Show raw grep results
-            echo "Raw grep results:" >&2
-            echo "  grep -c '<testcase': $(grep -c '<testcase' test-results/unit/results.xml 2>&1)" >&2
-            echo "  grep -c '<failure': $(grep -c '<failure' test-results/unit/results.xml 2>&1)" >&2
-            echo "  grep -c '<error': $(grep -c '<error' test-results/unit/results.xml 2>&1)" >&2
-            echo "  grep -c '<skipped': $(grep -c '<skipped' test-results/unit/results.xml 2>&1)" >&2
+            # Fallback: Count individual elements
+            element_total=$(grep -c '<testcase' test-results/unit/results.xml 2>/dev/null || echo "0")
+            element_failures=$(grep -c '<failure' test-results/unit/results.xml 2>/dev/null || echo "0")
+            element_errors=$(grep -c '<error' test-results/unit/results.xml 2>/dev/null || echo "0")
+            element_skipped=$(grep -c '<skipped' test-results/unit/results.xml 2>/dev/null || echo "0")
             
-            # Alternative parsing method using sed
-            alt_total=$(sed -n '/<testcase/s/.*//p' test-results/unit/results.xml | wc -l 2>/dev/null || echo "0")
-            alt_failed=$(sed -n '/<failure/s/.*//p' test-results/unit/results.xml | wc -l 2>/dev/null || echo "0")
+            # Debug: Show all parsing results
+            echo "=== XML Parsing Debug ===" >&2
+            echo "Testsuite attributes:" >&2
+            echo "  tests: '$suite_total'" >&2
+            echo "  failures: '$suite_failures'" >&2
+            echo "  errors: '$suite_errors'" >&2
+            echo "  skipped: '$suite_skipped'" >&2
+            echo "Element counts:" >&2
+            echo "  testcase: '$element_total'" >&2
+            echo "  failure: '$element_failures'" >&2
+            echo "  error: '$element_errors'" >&2
+            echo "  skipped: '$element_skipped'" >&2
             
-            echo "Alternative parsing results:" >&2
-            echo "  sed method total: $alt_total" >&2
-            echo "  sed method failed: $alt_failed" >&2
+            # Use testsuite attributes if available, otherwise fall back to element counts
+            if [ "$suite_total" != "0" ] && [ "$suite_total" != "" ]; then
+              total_tests=$suite_total
+              failed_tests=$suite_failures
+              error_tests=$suite_errors
+              skipped_tests=$suite_skipped
+              echo "Using testsuite attributes" >&2
+            else
+              total_tests=$element_total
+              failed_tests=$element_failures
+              error_tests=$element_errors
+              skipped_tests=$element_skipped
+              echo "Using element counts" >&2
+            fi
             
             # Clean up any whitespace and ensure they are valid numbers
             total_tests=$(echo "$total_tests" | tr -d '[:space:]')
@@ -137,8 +156,9 @@ jobs:
             error_tests=${error_tests:-0}
             skipped_tests=${skipped_tests:-0}
             
-            # Debug: Show parsed counts
-            echo "Debug: total='$total_tests', failed='$failed_tests', error='$error_tests', skipped='$skipped_tests'" >&2
+            # Debug: Show final parsed counts
+            echo "Final counts: total='$total_tests', failed='$failed_tests', error='$error_tests', skipped='$skipped_tests'" >&2
+            echo "=== End XML Parsing Debug ===" >&2
             
             # Test arithmetic operations
             echo "Testing arithmetic: total=$total_tests, failed=$failed_tests" >&2
