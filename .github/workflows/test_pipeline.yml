@@ -71,30 +71,27 @@ jobs:
   report:
     needs: [unit-tests]
     runs-on: ubuntu-latest
+    if: always()
     steps:
-      - uses: actions/download-artifact@v4  # Updated from v3 → v4
+      - uses: actions/download-artifact@v4
         with:
           name: unit-test-results
           path: test-results/unit
-#      - uses: actions/download-artifact@v4  # Updated from v3 → v4
-#        with:
-#          name: integration-test-results
-#          path: test-results/integration
 
       - name: Generate Markdown report
         run: |
           echo "## Test Summary" >> report.md
           echo "### Unit Tests" >> report.md
-          echo '```xml' >> report.md
-          cat test-results/unit/results.xml >> report.md
-          echo '```' >> report.md
-#          echo "### Integration Tests" >> report.md
-#          echo '```xml' >> report.md
-#          cat test-results/integration/results.xml >> report.md
-#          echo '```' >> report.md
+          if [ -f "test-results/unit/results.xml" ]; then
+            echo '```xml' >> report.md
+            cat test-results/unit/results.xml >> report.md
+            echo '```' >> report.md
+          else
+            echo "No test results found. Tests may have failed before generating results." >> report.md
+          fi
 
       - name: Upload report
-        uses: actions/upload-artifact@v4  # Updated from v3 → v4
+        uses: actions/upload-artifact@v4
         with:
           name: test-report
           path: report.md
