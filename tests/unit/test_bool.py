@@ -30,7 +30,7 @@ class TestBooleanTruthiness(TestCase):
         
         # Truthy values
         assert bool(1) == True
-        assert bool("hello") == 8
+        assert bool("hello") == True
         assert bool([1, 2, 3]) == True
         assert bool(True) == True
 
