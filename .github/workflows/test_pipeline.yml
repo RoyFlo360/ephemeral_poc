@@ -231,7 +231,16 @@ jobs:
               echo "" >> test-summary.md
               echo "### 📋 Raw Test Results" >> test-summary.md
               echo '```xml' >> test-summary.md
-              cat test-results/unit/results.xml >> test-summary.md
+              
+              # Pretty print the XML for better readability
+              if command -v xmllint >/dev/null 2>&1; then
+                # Use xmllint if available (most Linux systems)
+                xmllint --format test-results/unit/results.xml >> test-summary.md
+              else
+                # Use Python for pretty printing if xmllint not available
+                python3 -c "import xml.dom.minidom; import sys; dom = xml.dom.minidom.parse('test-results/unit/results.xml'); print(dom.toprettyxml(indent='  '))" >> test-summary.md 2>/dev/null || cat test-results/unit/results.xml >> test-summary.md
+              fi
+              
               echo '```' >> test-summary.md
             fi
             
@@ -240,38 +249,6 @@ jobs:
             echo "" >> test-summary.md
             echo "Tests may have failed before generating results. Check the workflow logs for details." >> test-summary.md
           fi
-
-      - name: Debug - Show generated report
-        run: |
-          echo "=== Generated Test Summary ==="
-          cat test-summary.md
-          echo "=== End of Summary ==="
-
-      - name: Test Comment on PR
-        if: github.event_name == 'pull_request'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            console.log('=== Test Comment Step ===');
-            console.log('Event name:', context.eventName);
-            console.log('PR Number:', context.issue.number);
-            console.log('Repository:', context.repo.owner + '/' + context.repo.repo);
-            console.log('Actor:', context.actor);
-            
-            // Try to create a simple test comment
-            try {
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: context.issue.number,
-                body: '🧪 **Test Comment**: Commenting is working!'
-              });
-              console.log('Test comment created successfully');
-            } catch (error) {
-              console.log('ERROR creating test comment:', error.message);
-              throw error;
-            }
-            console.log('=== End Test Comment ===');
 
       - name: Comment on PR
         if: github.event_name == 'pull_request'
@@ -360,18 +337,6 @@ jobs:
               console.log('=== End Debug Info ===');
               throw error; // Re-throw to fail the step
             }
-
-      - name: Debug - Check if comment step ran
-        if: github.event_name == 'pull_request'
-        run: |
-          echo "=== Comment Step Debug ==="
-          echo "Event name: ${{ github.event_name }}"
-          echo "PR number: ${{ github.event.pull_request.number }}"
-          echo "Repository: ${{ github.repository }}"
-          echo "Actor: ${{ github.actor }}"
-          echo "Event type: ${{ github.event_name }}"
-          echo "=== End Comment Debug ==="
-
       - name: Upload Test Summary
         uses: actions/upload-artifact@v4
         with:
