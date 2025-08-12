@@ -200,49 +200,78 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const fs = require('fs');
-            const testSummary = fs.readFileSync('test-summary.md', 'utf8');
-            
-            console.log('Attempting to comment on PR...');
-            console.log('PR Number:', context.issue.number);
-            console.log('Repository:', context.repo.owner + '/' + context.repo.repo);
-            
-            // Create or update PR comment
-            const { data: comments } = await github.rest.issues.listComments({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number
-            });
-            
-            console.log('Found', comments.length, 'existing comments');
-            
-            // Find existing test result comment
-            const existingComment = comments.find(comment => 
-              comment.user.type === 'Bot' && 
-              comment.body.includes('🧪 Unit Test Results')
-            );
-            
-            if (existingComment) {
-              console.log('Updating existing comment:', existingComment.id);
-              // Update existing comment
-              await github.rest.issues.updateComment({
+            try {
+              const fs = require('fs');
+              const testSummary = fs.readFileSync('test-summary.md', 'utf8');
+              
+              console.log('=== PR Comment Debug Info ===');
+              console.log('Event name:', context.eventName);
+              console.log('PR Number:', context.issue.number);
+              console.log('Repository:', context.repo.owner + '/' + context.repo.repo);
+              console.log('Actor:', context.actor);
+              console.log('Test summary length:', testSummary.length);
+              console.log('First 200 chars of summary:', testSummary.substring(0, 200));
+              
+              // Check if we can read the file
+              if (!fs.existsSync('test-summary.md')) {
+                console.log('ERROR: test-summary.md file not found!');
+                return;
+              }
+              
+              // Create or update PR comment
+              const { data: comments } = await github.rest.issues.listComments({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                comment_id: existingComment.id,
-                body: testSummary
+                issue_number: context.issue.number
               });
-            } else {
-              console.log('Creating new comment');
-              // Create new comment
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: context.issue.number,
-                body: testSummary
-              });
+              
+              console.log('Found', comments.length, 'existing comments');
+              
+              // Find existing test result comment
+              const existingComment = comments.find(comment => 
+                comment.user.type === 'Bot' && 
+                comment.body.includes('🧪 Unit Test Results')
+              );
+              
+              if (existingComment) {
+                console.log('Updating existing comment:', existingComment.id);
+                // Update existing comment
+                await github.rest.issues.updateComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  comment_id: existingComment.id,
+                  body: testSummary
+                });
+              } else {
+                console.log('Creating new comment');
+                // Create new comment
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: context.issue.number,
+                  body: testSummary
+                });
+              }
+              
+              console.log('Comment operation completed successfully');
+              console.log('=== End Debug Info ===');
+              
+            } catch (error) {
+              console.log('ERROR in comment step:', error.message);
+              console.log('Error stack:', error.stack);
+              console.log('=== End Debug Info ===');
+              throw error; // Re-throw to fail the step
             }
-            
-            console.log('Comment operation completed successfully');
+
+      - name: Debug - Check if comment step ran
+        if: github.event_name == 'pull_request'
+        run: |
+          echo "=== Comment Step Debug ==="
+          echo "Event name: ${{ github.event_name }}"
+          echo "PR number: ${{ github.event.issue.number }}"
+          echo "Repository: ${{ github.repository }}"
+          echo "Actor: ${{ github.actor }}"
+          echo "=== End Comment Debug ==="
 
       - name: Upload Test Summary
         uses: actions/upload-artifact@v4
