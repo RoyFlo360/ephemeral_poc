@@ -337,7 +337,6 @@ jobs:
               console.log('=== End Debug Info ===');
               throw error; // Re-throw to fail the step
             }
-
       - name: Upload Test Summary
         uses: actions/upload-artifact@v4
         with:
