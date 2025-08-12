@@ -104,19 +104,30 @@ jobs:
             echo "" >> test-summary.md
             
             # Extract test counts from XML - use more reliable parsing
+            # Use a different approach to avoid variable corruption
             total_tests=$(grep -c '<testcase' test-results/unit/results.xml 2>/dev/null || echo "0")
             failed_tests=$(grep -c '<failure' test-results/unit/results.xml 2>/dev/null || echo "0")
             error_tests=$(grep -c '<error' test-results/unit/results.xml 2>/dev/null || echo "0")
             skipped_tests=$(grep -c '<skipped' test-results/unit/results.xml 2>/dev/null || echo "0")
             
-            # Ensure all variables are numbers
+            # Clean up any whitespace and ensure they are valid numbers
+            total_tests=$(echo "$total_tests" | tr -d '[:space:]')
+            failed_tests=$(echo "$failed_tests" | tr -d '[:space:]')
+            error_tests=$(echo "$error_tests" | tr -d '[:space:]')
+            skipped_tests=$(echo "$skipped_tests" | tr -d '[:space:]')
+            
+            # Set default values if empty
             total_tests=${total_tests:-0}
             failed_tests=${failed_tests:-0}
             error_tests=${error_tests:-0}
             skipped_tests=${skipped_tests:-0}
             
             # Debug: Show parsed counts
-            echo "Debug: total=$total_tests, failed=$failed_tests, error=$error_tests, skipped=$skipped_tests" >&2
+            echo "Debug: total='$total_tests', failed='$failed_tests', error='$error_tests', skipped='$skipped_tests'" >&2
+            
+            # Test arithmetic operations
+            echo "Testing arithmetic: total=$total_tests, failed=$failed_tests" >&2
+            echo "Arithmetic test: $((total_tests + 0))" >&2
             
             # Calculate passed tests (total - failed - errors - skipped)
             passed_tests=$((total_tests - failed_tests - error_tests - skipped_tests))
@@ -150,7 +161,7 @@ jobs:
             fi
             
             # Calculate success rate safely
-            if [ "$total_tests" -gt 0 ] && [ "$total_tests" -ne 0 ]; then
+            if [ "$total_tests" -gt 0 ]; then
               success_rate=$(( (passed_tests * 100) / total_tests ))
               echo "- **Success Rate:** $success_rate%" >> test-summary.md
             else
