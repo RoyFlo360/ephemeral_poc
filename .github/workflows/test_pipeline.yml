@@ -2,7 +2,7 @@ name: Docker Ephemeral Tests
 
 on: [pull_request]
 
-# Add explicit permissions for commenting on PRs
+# Add explicit permissions for commenting on PR
 permissions:
   contents: read
   pull-requests: write
