@@ -44,7 +44,7 @@ class TestBooleanComparisons(TestCase):
         assert True != False
         
         # Comparison with other types
-        assert True == 0
+        assert True == 1
         assert False == 0
         assert True > False
         assert False < True
