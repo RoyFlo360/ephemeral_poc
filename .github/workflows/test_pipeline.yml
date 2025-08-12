@@ -247,6 +247,32 @@ jobs:
           cat test-summary.md
           echo "=== End of Summary ==="
 
+      - name: Test Comment on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            console.log('=== Test Comment Step ===');
+            console.log('Event name:', context.eventName);
+            console.log('PR Number:', context.issue.number);
+            console.log('Repository:', context.repo.owner + '/' + context.repo.repo);
+            console.log('Actor:', context.actor);
+            
+            // Try to create a simple test comment
+            try {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: '🧪 **Test Comment**: Commenting is working!'
+              });
+              console.log('Test comment created successfully');
+            } catch (error) {
+              console.log('ERROR creating test comment:', error.message);
+              throw error;
+            }
+            console.log('=== End Test Comment ===');
+
       - name: Comment on PR
         if: github.event_name == 'pull_request'
         uses: actions/github-script@v7
