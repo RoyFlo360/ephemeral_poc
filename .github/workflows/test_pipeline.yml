@@ -290,9 +290,29 @@ jobs:
               console.log('Test summary length:', testSummary.length);
               console.log('First 200 chars of summary:', testSummary.substring(0, 200));
               
+              // Debug: Show all available context
+              console.log('Full context:', JSON.stringify(context, null, 2));
+              console.log('GitHub context:', JSON.stringify(github, null, 2));
+              
               // Check if we can read the file
               if (!fs.existsSync('test-summary.md')) {
                 console.log('ERROR: test-summary.md file not found!');
+                return;
+              }
+              
+              // Get PR number from different possible sources
+              let prNumber = context.issue.number;
+              if (!prNumber && github.event && github.event.pull_request) {
+                prNumber = github.event.pull_request.number;
+              }
+              if (!prNumber && github.event && github.event.issue) {
+                prNumber = github.event.issue.number;
+              }
+              
+              console.log('Resolved PR Number:', prNumber);
+              
+              if (!prNumber) {
+                console.log('ERROR: Could not determine PR number!');
                 return;
               }
               
@@ -300,7 +320,7 @@ jobs:
               const { data: comments } = await github.rest.issues.listComments({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                issue_number: context.issue.number
+                issue_number: prNumber
               });
               
               console.log('Found', comments.length, 'existing comments');
@@ -326,7 +346,7 @@ jobs:
                 await github.rest.issues.createComment({
                   owner: context.repo.owner,
                   repo: context.repo.repo,
-                  issue_number: context.issue.number,
+                  issue_number: prNumber,
                   body: testSummary
                 });
               }
@@ -346,9 +366,10 @@ jobs:
         run: |
           echo "=== Comment Step Debug ==="
           echo "Event name: ${{ github.event_name }}"
-          echo "PR number: ${{ github.event.issue.number }}"
+          echo "PR number: ${{ github.event.pull_request.number }}"
           echo "Repository: ${{ github.repository }}"
           echo "Actor: ${{ github.actor }}"
+          echo "Event type: ${{ github.event_name }}"
           echo "=== End Comment Debug ==="
 
       - name: Upload Test Summary
