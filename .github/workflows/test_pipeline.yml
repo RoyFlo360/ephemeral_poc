@@ -1,6 +1,12 @@
 name: Docker Ephemeral Tests
 
-on: [push, pull_request]
+on: [pull_request]
+
+# Add explicit permissions for commenting on PR
+permissions:
+  contents: read
+  pull-requests: write
+  actions: read
 
 jobs:
   unit-tests:
@@ -18,7 +24,7 @@ jobs:
             --rm \
             -v $(pwd)/test-results/unit:/app/test-results \
             unit-test \
-            pytest --junitxml=/app/test-results/results.xml tests/unit/
+            pytest --junitxml=/app/test-results/results.xml --tb=short tests/unit/
 
       - name: Publish unit test results
         uses: actions/upload-artifact@v4
@@ -71,30 +77,303 @@ jobs:
   report:
     needs: [unit-tests]
     runs-on: ubuntu-latest
+    if: always()  # Always run to ensure comment is posted even if tests fail
     steps:
-      - uses: actions/download-artifact@v4  # Updated from v3 → v4
+      - uses: actions/download-artifact@v4
         with:
           name: unit-test-results
           path: test-results/unit
-#      - uses: actions/download-artifact@v4  # Updated from v3 → v4
-#        with:
-#          name: integration-test-results
-#          path: test-results/integration
 
-      - name: Generate Markdown report
+      - name: Generate Test Summary Report
         run: |
-          echo "## Test Summary" >> report.md
-          echo "### Unit Tests" >> report.md
-          echo '```xml' >> report.md
-          cat test-results/unit/results.xml >> report.md
-          echo '```' >> report.md
-#          echo "### Integration Tests" >> report.md
-#          echo '```xml' >> report.md
-#          cat test-results/integration/results.xml >> report.md
-#          echo '```' >> report.md
+          echo "## 🧪 Unit Test Results" > test-summary.md
+          echo "" >> test-summary.md
+          
+          # Debug: Show XML file content
+          echo "=== Debug: XML File Content ===" >&2
+          if [ -f "test-results/unit/results.xml" ]; then
+            cat test-results/unit/results.xml >&2
+          else
+            echo "XML file not found!" >&2
+          fi
+          echo "=== End Debug ===" >&2
+          
+          if [ -f "test-results/unit/results.xml" ]; then
+            # Parse XML results and generate summary
+            echo "### 📊 Test Summary" >> test-summary.md
+            echo "" >> test-summary.md
+            
+            # Extract test counts from XML - use more reliable parsing
+            # First try to get counts from testsuite attributes (most reliable)
+            suite_total=$(grep -o 'tests="[0-9]*"' test-results/unit/results.xml 2>/dev/null | sed 's/tests="\([0-9]*\)"/\1/' || echo "0")
+            suite_failures=$(grep -o 'failures="[0-9]*"' test-results/unit/results.xml 2>/dev/null | sed 's/failures="\([0-9]*\)"/\1/' || echo "0")
+            suite_errors=$(grep -o 'errors="[0-9]*"' test-results/unit/results.xml 2>/dev/null | sed 's/errors="\([0-9]*\)"/\1/' || echo "0")
+            suite_skipped=$(grep -o 'skipped="[0-9]*"' test-results/unit/results.xml 2>/dev/null | sed 's/skipped="\([0-9]*\)"/\1/' || echo "0")
+            
+            # Fallback: Count individual elements
+            element_total=$(grep -c '<testcase' test-results/unit/results.xml 2>/dev/null || echo "0")
+            element_failures=$(grep -c '<failure' test-results/unit/results.xml 2>/dev/null || echo "0")
+            element_errors=$(grep -c '<error' test-results/unit/results.xml 2>/dev/null || echo "0")
+            element_skipped=$(grep -c '<skipped' test-results/unit/results.xml 2>/dev/null || echo "0")
+            
+            # Debug: Show all parsing results
+            echo "=== XML Parsing Debug ===" >&2
+            echo "Testsuite attributes:" >&2
+            echo "  tests: '$suite_total'" >&2
+            echo "  failures: '$suite_failures'" >&2
+            echo "  errors: '$suite_errors'" >&2
+            echo "  skipped: '$suite_skipped'" >&2
+            echo "Element counts:" >&2
+            echo "  testcase: '$element_total'" >&2
+            echo "  failure: '$element_failures'" >&2
+            echo "  error: '$element_errors'" >&2
+            echo "  skipped: '$element_skipped'" >&2
+            
+            # Use testsuite attributes if available, otherwise fall back to element counts
+            if [ "$suite_total" != "0" ] && [ "$suite_total" != "" ]; then
+              total_tests=$suite_total
+              failed_tests=$suite_failures
+              error_tests=$suite_errors
+              skipped_tests=$suite_skipped
+              echo "Using testsuite attributes" >&2
+            else
+              total_tests=$element_total
+              failed_tests=$element_failures
+              error_tests=$element_errors
+              skipped_tests=$element_skipped
+              echo "Using element counts" >&2
+            fi
+            
+            # Clean up any whitespace and ensure they are valid numbers
+            total_tests=$(echo "$total_tests" | tr -d '[:space:]')
+            failed_tests=$(echo "$failed_tests" | tr -d '[:space:]')
+            error_tests=$(echo "$error_tests" | tr -d '[:space:]')
+            skipped_tests=$(echo "$skipped_tests" | tr -d '[:space:]')
+            
+            # Set default values if empty
+            total_tests=${total_tests:-0}
+            failed_tests=${failed_tests:-0}
+            error_tests=${error_tests:-0}
+            skipped_tests=${skipped_tests:-0}
+            
+            # Debug: Show final parsed counts
+            echo "Final counts: total='$total_tests', failed='$failed_tests', error='$error_tests', skipped='$skipped_tests'" >&2
+            echo "=== End XML Parsing Debug ===" >&2
+            
+            # Test arithmetic operations
+            echo "Testing arithmetic: total=$total_tests, failed=$failed_tests" >&2
+            echo "Arithmetic test: $((total_tests + 0))" >&2
+            
+            # Calculate passed tests (total - failed - errors - skipped)
+            passed_tests=$((total_tests - failed_tests - error_tests - skipped_tests))
+            
+            # Ensure we don't have negative numbers
+            if [ "$passed_tests" -lt 0 ]; then
+              passed_tests=0
+            fi
+            
+            # Create visual status indicators
+            if [ "$failed_tests" -eq 0 ] && [ "$error_tests" -eq 0 ]; then
+              echo "✅ **All tests passed!** ($total_tests/$total_tests)" >> test-summary.md
+              echo "" >> test-summary.md
+              echo "🎉 Great job! All unit tests are passing." >> test-summary.md
+            else
+              echo "❌ **Tests failed!** ($passed_tests/$total_tests passed, $((failed_tests + error_tests)) failed)" >> test-summary.md
+              echo "" >> test-summary.md
+              echo "⚠️  Some tests are failing. Please fix them before merging." >> test-summary.md
+            fi
+            
+            echo "" >> test-summary.md
+            echo "### 📈 Test Statistics" >> test-summary.md
+            echo "- **Total Tests:** $total_tests" >> test-summary.md
+            echo "- **Passed:** $passed_tests" >> test-summary.md
+            echo "- **Failed:** $failed_tests" >> test-summary.md
+            if [ "$error_tests" -gt 0 ]; then
+              echo "- **Errors:** $error_tests" >> test-summary.md
+            fi
+            if [ "$skipped_tests" -gt 0 ]; then
+              echo "- **Skipped:** $skipped_tests" >> test-summary.md
+            fi
+            
+            # Calculate success rate safely
+            if [ "$total_tests" -gt 0 ]; then
+              success_rate=$(( (passed_tests * 100) / total_tests ))
+              echo "- **Success Rate:** $success_rate%" >> test-summary.md
+            else
+              echo "- **Success Rate:** 0%" >> test-summary.md
+            fi
+            
+            # Add test details if there are failures or errors
+            if [ "$failed_tests" -gt 0 ] || [ "$error_tests" -gt 0 ]; then
+              echo "" >> test-summary.md
+              echo "### 🔍 Failed Tests Details" >> test-summary.md
+              
+              # Extract and format failure details - improved approach
+              if [ "$failed_tests" -gt 0 ]; then
+                echo "#### ❌ Test Failures:" >> test-summary.md
+                # Extract test names and failure messages
+                grep -A 10 '<testcase' test-results/unit/results.xml 2>/dev/null | while IFS= read -r line; do
+                  if [[ $line == *"name="* ]]; then
+                    test_name=$(echo "$line" | sed -n 's/.*name="\([^"]*\)".*/\1/p')
+                    if [ ! -z "$test_name" ]; then
+                      echo "- **$test_name**" >> test-summary.md
+                    fi
+                  elif [[ $line == *"<failure"* ]]; then
+                    # Extract failure message
+                    failure_msg=$(echo "$line" | sed -n 's/.*<failure[^>]*>\(.*\)<\/failure>.*/\1/p')
+                    if [ ! -z "$failure_msg" ]; then
+                      echo "  - Failure: \`$failure_msg\`" >> test-summary.md
+                    fi
+                  fi
+                done
+              fi
+              
+              echo "" >> test-summary.md
+              echo "### 📋 Raw Test Results" >> test-summary.md
+              echo '```xml' >> test-summary.md
+              cat test-results/unit/results.xml >> test-summary.md
+              echo '```' >> test-summary.md
+            fi
+            
+          else
+            echo "❌ **No test results found**" >> test-summary.md
+            echo "" >> test-summary.md
+            echo "Tests may have failed before generating results. Check the workflow logs for details." >> test-summary.md
+          fi
 
-      - name: Upload report
-        uses: actions/upload-artifact@v4  # Updated from v3 → v4
+      - name: Debug - Show generated report
+        run: |
+          echo "=== Generated Test Summary ==="
+          cat test-summary.md
+          echo "=== End of Summary ==="
+
+      - name: Test Comment on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
         with:
-          name: test-report
-          path: report.md
+          script: |
+            console.log('=== Test Comment Step ===');
+            console.log('Event name:', context.eventName);
+            console.log('PR Number:', context.issue.number);
+            console.log('Repository:', context.repo.owner + '/' + context.repo.repo);
+            console.log('Actor:', context.actor);
+            
+            // Try to create a simple test comment
+            try {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: '🧪 **Test Comment**: Commenting is working!'
+              });
+              console.log('Test comment created successfully');
+            } catch (error) {
+              console.log('ERROR creating test comment:', error.message);
+              throw error;
+            }
+            console.log('=== End Test Comment ===');
+
+      - name: Comment on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            try {
+              const fs = require('fs');
+              const testSummary = fs.readFileSync('test-summary.md', 'utf8');
+              
+              console.log('=== PR Comment Debug Info ===');
+              console.log('Event name:', context.eventName);
+              console.log('PR Number:', context.issue.number);
+              console.log('Repository:', context.repo.owner + '/' + context.repo.repo);
+              console.log('Actor:', context.actor);
+              console.log('Test summary length:', testSummary.length);
+              console.log('First 200 chars of summary:', testSummary.substring(0, 200));
+              
+              // Debug: Show all available context
+              console.log('Full context:', JSON.stringify(context, null, 2));
+              console.log('GitHub context:', JSON.stringify(github, null, 2));
+              
+              // Check if we can read the file
+              if (!fs.existsSync('test-summary.md')) {
+                console.log('ERROR: test-summary.md file not found!');
+                return;
+              }
+              
+              // Get PR number from different possible sources
+              let prNumber = context.issue.number;
+              if (!prNumber && github.event && github.event.pull_request) {
+                prNumber = github.event.pull_request.number;
+              }
+              if (!prNumber && github.event && github.event.issue) {
+                prNumber = github.event.issue.number;
+              }
+              
+              console.log('Resolved PR Number:', prNumber);
+              
+              if (!prNumber) {
+                console.log('ERROR: Could not determine PR number!');
+                return;
+              }
+              
+              // Create or update PR comment
+              const { data: comments } = await github.rest.issues.listComments({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber
+              });
+              
+              console.log('Found', comments.length, 'existing comments');
+              
+              // Find existing test result comment
+              const existingComment = comments.find(comment => 
+                comment.user.type === 'Bot' && 
+                comment.body.includes('🧪 Unit Test Results')
+              );
+              
+              if (existingComment) {
+                console.log('Updating existing comment:', existingComment.id);
+                // Update existing comment
+                await github.rest.issues.updateComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  comment_id: existingComment.id,
+                  body: testSummary
+                });
+              } else {
+                console.log('Creating new comment');
+                // Create new comment
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: prNumber,
+                  body: testSummary
+                });
+              }
+              
+              console.log('Comment operation completed successfully');
+              console.log('=== End Debug Info ===');
+              
+            } catch (error) {
+              console.log('ERROR in comment step:', error.message);
+              console.log('Error stack:', error.stack);
+              console.log('=== End Debug Info ===');
+              throw error; // Re-throw to fail the step
+            }
+
+      - name: Debug - Check if comment step ran
+        if: github.event_name == 'pull_request'
+        run: |
+          echo "=== Comment Step Debug ==="
+          echo "Event name: ${{ github.event_name }}"
+          echo "PR number: ${{ github.event.pull_request.number }}"
+          echo "Repository: ${{ github.repository }}"
+          echo "Actor: ${{ github.actor }}"
+          echo "Event type: ${{ github.event_name }}"
+          echo "=== End Comment Debug ==="
+
+      - name: Upload Test Summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-summary
+          path: test-summary.md
