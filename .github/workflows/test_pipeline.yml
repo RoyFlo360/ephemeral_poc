@@ -18,7 +18,7 @@ jobs:
             --rm \
             -v $(pwd)/test-results/unit:/app/test-results \
             unit-test \
-            pytest --junitxml=/app/test-results/results.xml tests/unit/
+            pytest --junitxml=/app/test-results/results.xml --tb=short tests/unit/
 
       - name: Publish unit test results
         uses: actions/upload-artifact@v4
@@ -78,20 +78,95 @@ jobs:
           name: unit-test-results
           path: test-results/unit
 
-      - name: Generate Markdown report
+      - name: Generate Test Summary Report
         run: |
-          echo "## Test Summary" >> report.md
-          echo "### Unit Tests" >> report.md
+          echo "## 🧪 Unit Test Results" > test-summary.md
+          echo "" >> test-summary.md
+          
           if [ -f "test-results/unit/results.xml" ]; then
-            echo '```xml' >> report.md
-            cat test-results/unit/results.xml >> report.md
-            echo '```' >> report.md
+            # Parse XML results and generate summary
+            echo "### 📊 Test Summary" >> test-summary.md
+            echo "" >> test-summary.md
+            
+            # Extract test counts from XML
+            total_tests=$(grep -c '<testcase' test-results/unit/results.xml || echo "0")
+            failed_tests=$(grep -c '<failure' test-results/unit/results.xml || echo "0")
+            passed_tests=$((total_tests - failed_tests))
+            
+            # Create visual status indicators
+            if [ "$failed_tests" -eq 0 ]; then
+              echo "✅ **All tests passed!** ($total_tests/$total_tests)" >> test-summary.md
+              echo "" >> test-summary.md
+              echo "🎉 Great job! All unit tests are passing." >> test-summary.md
+            else
+              echo "❌ **Tests failed!** ($passed_tests/$total_tests passed, $failed_tests failed)" >> test-summary.md
+              echo "" >> test-summary.md
+              echo "⚠️  Some tests are failing. Please fix them before merging." >> test-summary.md
+            fi
+            
+            echo "" >> test-summary.md
+            echo "### 📈 Test Statistics" >> test-summary.md
+            echo "- **Total Tests:** $total_tests" >> test-summary.md
+            echo "- **Passed:** $passed_tests" >> test-summary.md
+            echo "- **Failed:** $failed_tests" >> test-summary.md
+            echo "- **Success Rate:** $(( (passed_tests * 100) / total_tests ))%" >> test-summary.md
+            
+            # Add test details if there are failures
+            if [ "$failed_tests" -gt 0 ]; then
+              echo "" >> test-summary.md
+              echo "### 🔍 Failed Tests" >> test-summary.md
+              echo "```xml" >> test-summary.md
+              cat test-results/unit/results.xml >> test-summary.md
+              echo "```" >> test-summary.md
+            fi
+            
           else
-            echo "No test results found. Tests may have failed before generating results." >> report.md
+            echo "❌ **No test results found**" >> test-summary.md
+            echo "" >> test-summary.md
+            echo "Tests may have failed before generating results. Check the workflow logs for details." >> test-summary.md
           fi
 
-      - name: Upload report
+      - name: Comment on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const testSummary = fs.readFileSync('test-summary.md', 'utf8');
+            
+            // Create or update PR comment
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number
+            });
+            
+            // Find existing test result comment
+            const existingComment = comments.find(comment => 
+              comment.user.type === 'Bot' && 
+              comment.body.includes('🧪 Unit Test Results')
+            );
+            
+            if (existingComment) {
+              // Update existing comment
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existingComment.id,
+                body: testSummary
+              });
+            } else {
+              // Create new comment
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: testSummary
+              });
+            }
+
+      - name: Upload Test Summary
         uses: actions/upload-artifact@v4
         with:
-          name: test-report
-          path: report.md
+          name: test-summary
+          path: test-summary.md
