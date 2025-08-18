@@ -22,6 +22,7 @@ services:
     build:
       context: .
       dockerfile: dockerfile.integration
+    container_name: integration-test-app
     depends_on:
       postgres:
         condition: service_healthy
@@ -39,7 +40,9 @@ services:
       sh -c "
         mkdir -p test-results/integration &&
         pytest --junitxml=test-results/integration/results.xml --tb=short tests/integration/ &&
-        echo 'Integration tests completed'
+        echo 'Integration tests completed' &&
+        ls -la test-results/integration/ &&
+        cat test-results/integration/results.xml
       "
 
 networks:

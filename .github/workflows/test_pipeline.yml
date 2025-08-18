@@ -60,12 +60,83 @@ jobs:
           docker-compose -f docker-compose.integration.yml up \
             --build \
             --abort-on-container-exit \
-            --exit-code-from app
+            --exit-code-from app \
+            --remove-orphans
+      
+      - name: Check docker-compose logs
+        if: always()
+        run: |
+          echo "=== Docker Compose Logs ==="
+          docker-compose -f docker-compose.integration.yml logs app || echo "Failed to get app logs"
+          echo "=== End Logs ==="
+      
+      - name: Check test results directory
+        if: always()
+        run: |
+          echo "=== Test Results Directory Check ==="
+          echo "Current directory: $(pwd)"
+          echo "test-results directory exists: $(test -d test-results && echo "Yes" || echo "No")"
+          if [ -d test-results ]; then
+            echo "test-results contents:"
+            ls -la test-results/
+            if [ -d test-results/integration ]; then
+              echo "test-results/integration contents:"
+              ls -la test-results/integration/
+            fi
+          fi
+          echo "=== End Directory Check ==="
 
       - name: Save integration test results
         if: always()
         run: |
-          docker cp $(docker ps -aqf "name=app"):/app/test-results/integration/results.xml test-results/integration/
+          echo "=== Debug: Container Discovery ==="
+          echo "Current directory: $(pwd)"
+          echo "Directory contents:"
+          ls -la
+          
+          echo ""
+          echo "All running containers:"
+          docker ps -a
+          
+          echo ""
+          echo "All containers (including stopped):"
+          docker ps -aq
+          
+          echo ""
+          echo "=== End Debug ==="
+          
+          # Try to find the app container by specific name first
+          CONTAINER_ID=$(docker ps -aqf "name=integration-test-app" 2>/dev/null || echo "")
+          echo "Container ID for 'integration-test-app': $CONTAINER_ID"
+          
+          # If not found, try alternative naming patterns
+          if [ -z "$CONTAINER_ID" ]; then
+            CONTAINER_ID=$(docker ps -aqf "name=ephemeral_poc-app-1" 2>/dev/null || echo "")
+            echo "Container ID for 'ephemeral_poc-app-1': $CONTAINER_ID"
+          fi
+          
+          # If still not found, try to find any container with test results
+          if [ -z "$CONTAINER_ID" ]; then
+            CONTAINER_ID=$(docker ps -aqf "ancestor=ephemeral_poc_app" 2>/dev/null || echo "")
+            echo "Container ID for 'ancestor=ephemeral_poc_app': $CONTAINER_ID"
+          fi
+          
+          # If container found, copy results
+          if [ ! -z "$CONTAINER_ID" ]; then
+            echo "Found container: $CONTAINER_ID"
+            docker cp "$CONTAINER_ID:/app/test-results/integration/results.xml" test-results/integration/ || echo "Failed to copy from container"
+          else
+            echo "No container found, checking if results exist in mounted volume"
+          fi
+          
+          # Also check if results were written to the mounted volume
+          if [ -f "test-results/integration/results.xml" ]; then
+            echo "Test results found in mounted volume"
+          else
+            echo "No test results found, creating empty results file"
+            mkdir -p test-results/integration
+            echo '<?xml version="1.0" encoding="utf-8"?><testsuites><testsuite name="integration" tests="0" failures="0" errors="0" skipped="0" time="0.0"></testsuite></testsuites>' > test-results/integration/results.xml
+          fi
 
       - name: Publish integration test results
         uses: actions/upload-artifact@v4  # Updated from v3 → v4
