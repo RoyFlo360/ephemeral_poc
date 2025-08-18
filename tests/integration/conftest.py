@@ -8,7 +8,7 @@ from os import getenv
 def postgres_connection():
     """Create a PostgreSQL connection for the entire test session"""
     # Get connection details from environment variables
-    host = getenv("POSTGRES_HOST", "postgres")
+    host = getenv("POSTGRES_HOST", "postgres")  # Default to postgres service name
     port = int(getenv("POSTGRES_PORT", "5432"))
     database = getenv("POSTGRES_DB", "test")
     user = getenv("POSTGRES_USER", "test")
