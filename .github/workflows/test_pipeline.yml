@@ -116,19 +116,6 @@ jobs:
             element_errors=$(grep -c '<error' test-results/unit/results.xml 2>/dev/null || echo "0")
             element_skipped=$(grep -c '<skipped' test-results/unit/results.xml 2>/dev/null || echo "0")
             
-            # Debug: Show all parsing results
-            echo "=== XML Parsing Debug ===" >&2
-            echo "Testsuite attributes:" >&2
-            echo "  tests: '$suite_total'" >&2
-            echo "  failures: '$suite_failures'" >&2
-            echo "  errors: '$suite_errors'" >&2
-            echo "  skipped: '$suite_skipped'" >&2
-            echo "Element counts:" >&2
-            echo "  testcase: '$element_total'" >&2
-            echo "  failure: '$element_failures'" >&2
-            echo "  error: '$element_errors'" >&2
-            echo "  skipped: '$element_skipped'" >&2
-            
             # Use testsuite attributes if available, otherwise fall back to element counts
             if [ "$suite_total" != "0" ] && [ "$suite_total" != "" ]; then
               total_tests=$suite_total
@@ -266,10 +253,6 @@ jobs:
               console.log('Actor:', context.actor);
               console.log('Test summary length:', testSummary.length);
               console.log('First 200 chars of summary:', testSummary.substring(0, 200));
-              
-              // Debug: Show all available context
-              console.log('Full context:', JSON.stringify(context, null, 2));
-              console.log('GitHub context:', JSON.stringify(github, null, 2));
               
               // Check if we can read the file
               if (!fs.existsSync('test-summary.md')) {
