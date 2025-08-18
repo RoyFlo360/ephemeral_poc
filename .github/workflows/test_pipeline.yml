@@ -33,49 +33,49 @@ jobs:
           name: unit-test-results
           path: test-results/unit/results.xml
 
-#  integration-tests:
-#    needs: unit-tests
-#    runs-on: ubuntu-latest
-#    services:
-#      postgres:
-#        image: postgres:14
-#        env:
-#          POSTGRES_PASSWORD: test
-#          POSTGRES_USER: test
-#          POSTGRES_DB: test
-#        ports:
-#          - 5432:5432
-#        options: >-
-#          --health-cmd pg_isready
-#          --health-interval 10s
-#          --health-timeout 5s
-#          --health-retries 5
-#
-#    steps:
-#      - uses: actions/checkout@v4
-#
-#      - name: Run integration tests
-#        run: |
-#          mkdir -p test-results/integration
-#          docker-compose -f docker-compose.integration.yml up \
-#            --build \
-#            --abort-on-container-exit \
-#            --exit-code-from app
-#
-#      - name: Save integration test results
-#        if: always()
-#        run: |
-#          docker cp $(docker ps -aqf "name=app"):/app/test-results/integration/results.xml test-results/integration/
-#
-#      - name: Publish integration test results
-#        uses: actions/upload-artifact@v4  # Updated from v3 → v4
-#        if: always()
-#        with:
-#          name: integration-test-results
-#          path: test-results/integration/results.xml
+  integration-tests:
+    needs: unit-tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:14
+        env:
+          POSTGRES_PASSWORD: test
+          POSTGRES_USER: test
+          POSTGRES_DB: test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run integration tests
+        run: |
+          mkdir -p test-results/integration
+          docker-compose -f docker-compose.integration.yml up \
+            --build \
+            --abort-on-container-exit \
+            --exit-code-from app
+
+      - name: Save integration test results
+        if: always()
+        run: |
+          docker cp $(docker ps -aqf "name=app"):/app/test-results/integration/results.xml test-results/integration/
+
+      - name: Publish integration test results
+        uses: actions/upload-artifact@v4  # Updated from v3 → v4
+        if: always()
+        with:
+          name: integration-test-results
+          path: test-results/integration/results.xml
 
   report:
-    needs: [unit-tests]
+    needs: [unit-tests, integration-tests]
     runs-on: ubuntu-latest
     if: always()  # Always run to ensure comment is posted even if tests fail
     steps:
@@ -83,9 +83,26 @@ jobs:
         with:
           name: unit-test-results
           path: test-results/unit
+      
+      - uses: actions/download-artifact@v4
+        with:
+          name: integration-test-results
+          path: test-results/integration
 
       - name: Generate Test Summary Report
         run: |
+          # Initialize unit & integration test variables
+          unit_suite_total=0
+          unit_suite_failures=0
+          unit_suite_errors=0
+          unit_suite_skipped=0
+
+          int_total_tests=0
+          int_passed_tests=0
+          int_failed_tests=0
+          int_error_tests=0
+          int_skipped_tests=0
+          
           echo "## 🧪 Unit Test Results" > test-summary.md
           echo "" >> test-summary.md
           
@@ -105,28 +122,28 @@ jobs:
             
             # Extract test counts from XML - use more reliable parsing
             # First try to get counts from testsuite attributes (most reliable)
-            suite_total=$(grep -o 'tests="[0-9]*"' test-results/unit/results.xml 2>/dev/null | sed 's/tests="\([0-9]*\)"/\1/' || echo "0")
-            suite_failures=$(grep -o 'failures="[0-9]*"' test-results/unit/results.xml 2>/dev/null | sed 's/failures="\([0-9]*\)"/\1/' || echo "0")
-            suite_errors=$(grep -o 'errors="[0-9]*"' test-results/unit/results.xml 2>/dev/null | sed 's/errors="\([0-9]*\)"/\1/' || echo "0")
-            suite_skipped=$(grep -o 'skipped="[0-9]*"' test-results/unit/results.xml 2>/dev/null | sed 's/skipped="\([0-9]*\)"/\1/' || echo "0")
+            unit_suite_total=$(grep -o 'tests="[0-9]*"' test-results/unit/results.xml 2>/dev/null | sed 's/tests="\([0-9]*\)"/\1/' || echo "0")
+            unit_suite_failures=$(grep -o 'failures="[0-9]*"' test-results/unit/results.xml 2>/dev/null | sed 's/failures="\([0-9]*\)"/\1/' || echo "0")
+            unit_suite_errors=$(grep -o 'errors="[0-9]*"' test-results/unit/results.xml 2>/dev/null | sed 's/errors="\([0-9]*\)"/\1/' || echo "0")
+            unit_suite_skipped=$(grep -o 'skipped="[0-9]*"' test-results/unit/results.xml 2>/dev/null | sed 's/skipped="\([0-9]*\)"/\1/' || echo "0")
             
             # Fallback: Count individual elements
-            element_total=$(grep -c '<testcase' test-results/unit/results.xml 2>/dev/null || echo "0")
-            element_failures=$(grep -c '<failure' test-results/unit/results.xml 2>/dev/null || echo "0")
-            element_errors=$(grep -c '<error' test-results/unit/results.xml 2>/dev/null || echo "0")
-            element_skipped=$(grep -c '<skipped' test-results/unit/results.xml 2>/dev/null || echo "0")
+            unit_element_total=$(grep -c '<testcase' test-results/unit/results.xml 2>/dev/null || echo "0")
+            unit_element_failures=$(grep -c '<failure' test-results/unit/results.xml 2>/dev/null || echo "0")
+            unit_element_errors=$(grep -c '<error' test-results/unit/results.xml 2>/dev/null || echo "0")
+            unit_element_skipped=$(grep -c '<skipped' test-results/unit/results.xml 2>/dev/null || echo "0")
             
             # Use testsuite attributes if available, otherwise fall back to element counts
-            if [ "$suite_total" != "0" ] && [ "$suite_total" != "" ]; then
-              total_tests=$suite_total
-              failed_tests=$suite_failures
-              error_tests=$suite_errors
-              skipped_tests=$suite_skipped
+            if [ "$unit_suite_total" != "0" ] && [ "$unit_suite_total" != "" ]; then
+              total_tests=$unit_suite_total
+              failed_tests=$unit_suite_failures
+              error_tests=$unit_suite_errors
+              skipped_tests=$unit_suite_skipped
               echo "Using testsuite attributes" >&2
             else
-              total_tests=$element_total
-              failed_tests=$element_failures
-              error_tests=$element_errors
+              total_tests=$unit_element_total
+              failed_tests=$unit_element_failures
+              error_tests=$unit_element_errors
               skipped_tests=$element_skipped
               echo "Using element counts" >&2
             fi
@@ -236,6 +253,149 @@ jobs:
             echo "" >> test-summary.md
             echo "Tests may have failed before generating results. Check the workflow logs for details." >> test-summary.md
           fi
+          
+          # Integration Test Results Section
+          echo "" >> test-summary.md
+          echo "---" >> test-summary.md
+          echo "" >> test-summary.md
+          echo "## 🗄️ Integration Test Results" >> test-summary.md
+          echo "" >> test-summary.md
+          
+          if [ -f "test-results/integration/results.xml" ]; then
+            # Parse integration test XML results
+            echo "### 📊 Integration Test Summary" >> test-summary.md
+            echo "" >> test-summary.md
+            
+            # Extract test counts from integration test XML
+            int_unit_suite_total=$(grep -o 'tests="[0-9]*"' test-results/integration/results.xml 2>/dev/null | sed 's/tests="\([0-9]*\)"/\1/' || echo "0")
+            int_unit_suite_failures=$(grep -o 'failures="[0-9]*"' test-results/integration/results.xml 2>/dev/null | sed 's/failures="\([0-9]*\)"/\1/' || echo "0")
+            int_unit_suite_errors=$(grep -o 'errors="[0-9]*"' test-results/integration/results.xml 2>/dev/null | sed 's/errors="\([0-9]*\)"/\1/' || echo "0")
+            int_unit_suite_skipped=$(grep -o 'skipped="[0-9]*"' test-results/integration/results.xml 2>/dev/null | sed 's/skipped="\([0-9]*\)"/\1/' || echo "0")
+            
+            # Fallback: Count individual elements
+            int_unit_element_total=$(grep -c '<testcase' test-results/integration/results.xml 2>/dev/null || echo "0")
+            int_unit_element_failures=$(grep -c '<failure' test-results/integration/results.xml 2>/dev/null || echo "0")
+            int_unit_element_errors=$(grep -c '<error' test-results/integration/results.xml 2>/dev/null || echo "0")
+            int_element_skipped=$(grep -c '<skipped' test-results/integration/results.xml 2>/dev/null || echo "0")
+            
+            # Use testsuite attributes if available, otherwise fall back to element counts
+            if [ "$int_unit_suite_total" != "0" ] && [ "$int_unit_suite_total" != "" ]; then
+              int_total_tests=$int_unit_suite_total
+              int_failed_tests=$int_unit_suite_failures
+              int_error_tests=$int_unit_suite_errors
+              int_skipped_tests=$int_unit_suite_skipped
+            else
+              int_total_tests=$int_unit_element_total
+              int_failed_tests=$int_unit_element_failures
+              int_error_tests=$int_unit_element_errors
+              int_skipped_tests=$int_element_skipped
+            fi
+            
+            # Clean up any whitespace and ensure they are valid numbers
+            int_total_tests=$(echo "$int_total_tests" | tr -d '[:space:]')
+            int_failed_tests=$(echo "$int_failed_tests" | tr -d '[:space:]')
+            int_error_tests=$(echo "$int_error_tests" | tr -d '[:space:]')
+            int_skipped_tests=$(echo "$int_skipped_tests" | tr -d '[:space:]')
+            
+            # Set default values if empty
+            int_total_tests=${int_total_tests:-0}
+            int_failed_tests=${int_failed_tests:-0}
+            int_error_tests=${int_error_tests:-0}
+            int_skipped_tests=${int_skipped_tests:-0}
+            
+            # Calculate passed integration tests
+            int_passed_tests=$((int_total_tests - int_failed_tests - int_error_tests - int_skipped_tests))
+            
+            # Ensure we don't have negative numbers
+            if [ "$int_passed_tests" -lt 0 ]; then
+              int_passed_tests=0
+            fi
+            
+            # Create visual status indicators for integration tests
+            if [ "$int_failed_tests" -eq 0 ] && [ "$int_error_tests" -eq 0 ]; then
+              echo "✅ **All integration tests passed!** ($int_total_tests/$int_total_tests)" >> test-summary.md
+              echo "" >> test-summary.md
+              echo "🎉 Great job! All integration tests are passing." >> test-summary.md
+            else
+              echo "❌ **Integration tests failed!** ($int_passed_tests/$int_total_tests passed, $((int_failed_tests + int_error_tests)) failed)" >> test-summary.md
+              echo "" >> test-summary.md
+              echo "⚠️  Some integration tests are failing. Please fix them before merging." >> test-summary.md
+            fi
+            
+            echo "" >> test-summary.md
+            echo "### 📈 Integration Test Statistics" >> test-summary.md
+            echo "- **Total Tests:** $int_total_tests" >> test-summary.md
+            echo "- **Passed:** $int_passed_tests" >> test-summary.md
+            echo "- **Failed:** $int_failed_tests" >> test-summary.md
+            if [ "$int_error_tests" -gt 0 ]; then
+              echo "- **Errors:** $int_error_tests" >> test-summary.md
+            fi
+            if [ "$int_skipped_tests" -gt 0 ]; then
+              echo "- **Skipped:** $int_skipped_tests" >> test-summary.md
+            fi
+            
+            # Calculate integration test success rate
+            if [ "$int_total_tests" -gt 0 ]; then
+              int_success_rate=$(( (int_passed_tests * 100) / int_total_tests ))
+              echo "- **Success Rate:** $int_success_rate%" >> test-summary.md
+            else
+              echo "- **Success Rate:** 0%" >> test-summary.md
+            fi
+            
+            # Add integration test details if there are failures or errors
+            if [ "$int_failed_tests" -gt 0 ] || [ "$int_error_tests" -gt 0 ]; then
+              echo "" >> test-summary.md
+              echo "### 🔍 Failed Integration Tests Details" >> test-summary.md
+              
+              if [ "$int_failed_tests" -gt 0 ]; then
+                echo "#### ❌ Integration Test Failures:" >> test-summary.md
+                # Extract test names and failure messages
+                grep -A 10 '<testcase' test-results/integration/results.xml 2>/dev/null | while IFS= read -r line; do
+                  if [[ $line == *"name="* ]]; then
+                    test_name=$(echo "$line" | sed -n 's/.*name="\([^"]*\)".*/\1/p')
+                    if [ ! -z "$test_name" ]; then
+                      echo "- **$test_name**" >> test-summary.md
+                    fi
+                  elif [[ $line == *"<failure"* ]]; then
+                    # Extract failure message
+                    failure_msg=$(echo "$line" | sed -n 's/.*<failure[^>]*>\(.*\)<\/failure>.*/\1/p')
+                    if [ ! -z "$failure_msg" ]; then
+                      echo "  - Failure: \`$failure_msg\`" >> test-summary.md
+                    fi
+                  fi
+                done
+              fi
+            fi
+            
+          else
+            echo "❌ **No integration test results found**" >> test-summary.md
+            echo "" >> test-summary.md
+            echo "Integration tests may have failed before generating results. Check the workflow logs for details." >> test-summary.md
+          fi
+          
+          # Overall Test Summary
+          echo "" >> test-summary.md
+          echo "---" >> test-summary.md
+          echo "" >> test-summary.md
+          echo "## 🎯 Overall Test Summary" >> test-summary.md
+          echo "" >> test-summary.md
+          
+          # Calculate overall totals
+          overall_total=$((total_tests + int_total_tests))
+          overall_passed=$((passed_tests + int_passed_tests))
+          overall_failed=$((failed_tests + int_failed_tests + error_tests + int_error_tests))
+          
+          if [ "$overall_failed" -eq 0 ]; then
+            echo "🎉 **All tests passed!** ($overall_passed/$overall_total)" >> test-summary.md
+          else
+            echo "⚠️  **Some tests failed!** ($overall_passed/$overall_total passed, $overall_failed failed)" >> test-summary.md
+          fi
+          
+          echo "" >> test-summary.md
+          echo "- **Unit Tests:** $passed_tests/$total_tests passed" >> test-summary.md
+          echo "- **Integration Tests:** $int_passed_tests/$int_total_tests passed" >> test-summary.md
+          echo "- **Total Tests:** $overall_total" >> test-summary.md
+          echo "- **Overall Success Rate:** $(( (overall_passed * 100) / overall_total ))%" >> test-summary.md
 
       - name: Comment on PR
         if: github.event_name == 'pull_request'
@@ -285,10 +445,10 @@ jobs:
               
               console.log('Found', comments.length, 'existing comments');
               
-              // Find existing test result comment
+              // Find existing test result comment (look for either unit or integration test results)
               const existingComment = comments.find(comment => 
                 comment.user.type === 'Bot' && 
-                comment.body.includes('🧪 Unit Test Results')
+                (comment.body.includes('🧪 Unit Test Results') || comment.body.includes('🗄️ Integration Test Results'))
               );
               
               if (existingComment) {
