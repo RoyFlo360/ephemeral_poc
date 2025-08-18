@@ -54,20 +54,60 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install Docker Compose (if needed)
+        run: |
+          echo "=== Docker Environment Check ==="
+          echo "Docker version:"
+          docker --version
+          echo ""
+          echo "Docker Compose version:"
+          docker compose version 2>/dev/null || echo "docker compose not available"
+          echo ""
+          echo "Checking for docker-compose:"
+          which docker-compose 2>/dev/null || echo "docker-compose not found in PATH"
+          echo "=== End Docker Check ==="
+          
+          # Check if docker compose is available
+          if ! docker compose version >/dev/null 2>&1; then
+            echo "Installing Docker Compose..."
+            # Install docker-compose as fallback
+            sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+            sudo chmod +x /usr/local/bin/docker-compose
+            echo "Docker Compose installed as fallback"
+          else
+            echo "Docker Compose is available"
+          fi
+
       - name: Run integration tests
         run: |
           mkdir -p test-results/integration
-          docker-compose -f docker-compose.integration.yml up \
-            --build \
-            --abort-on-container-exit \
-            --exit-code-from app \
-            --remove-orphans
+          # Use docker compose if available, otherwise fall back to docker-compose
+          if docker compose version >/dev/null 2>&1; then
+            echo "Using 'docker compose'"
+            docker compose -f docker-compose.integration.yml up \
+              --build \
+              --abort-on-container-exit \
+              --exit-code-from app \
+              --remove-orphans
+          else
+            echo "Using 'docker-compose' fallback"
+            docker-compose -f docker-compose.integration.yml up \
+              --build \
+              --abort-on-container-exit \
+              --exit-code-from app \
+              --remove-orphans
+          fi
       
       - name: Check docker-compose logs
         if: always()
         run: |
           echo "=== Docker Compose Logs ==="
-          docker-compose -f docker-compose.integration.yml logs app || echo "Failed to get app logs"
+          # Use docker compose if available, otherwise fall back to docker-compose
+          if docker compose version >/dev/null 2>&1; then
+            docker compose -f docker-compose.integration.yml logs app || echo "Failed to get app logs"
+          else
+            docker-compose -f docker-compose.integration.yml logs app || echo "Failed to get app logs"
+          fi
           echo "=== End Logs ==="
       
       - name: Check test results directory
