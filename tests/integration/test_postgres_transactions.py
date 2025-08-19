@@ -9,6 +9,7 @@ class TestPostgreSQLTransactions:
     def db_connection(self, postgres_connection):
         """Create a database connection for the test class"""
         yield postgres_connection
+        
     
     def test_transaction_commit(self, db_connection):
         """Test that committed transactions persist data"""
@@ -40,6 +41,7 @@ class TestPostgreSQLTransactions:
             # Clean up
             cursor.execute("DROP TABLE transaction_test;")
             db_connection.commit()
+
     
     def test_transaction_rollback(self, db_connection):
         """Test that rolled back transactions don't persist data"""
@@ -81,6 +83,7 @@ class TestPostgreSQLTransactions:
             # Clean up
             cursor.execute("DROP TABLE rollback_test;")
             db_connection.commit()
+
     
     def test_nested_transactions(self, db_connection):
         """Test nested transaction behavior with savepoints"""

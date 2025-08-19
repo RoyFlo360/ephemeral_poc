@@ -78,8 +78,6 @@ jobs:
             echo "Docker Compose is available"
           fi
 
-
-
       - name: Run integration tests
         run: |
           mkdir -p test-results/integration
