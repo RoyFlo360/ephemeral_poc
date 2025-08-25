@@ -1,4 +1,4 @@
-# Dockerfile.test
+# Dockerfile for unit tests only
 FROM python:3.9-slim
 
 WORKDIR /app
@@ -7,11 +7,14 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code and tests
-COPY . .
+# Copy only unit tests - be very specific to avoid integration tests
+COPY tests/unit/ ./tests/unit/
 
 # Create test results directory
 RUN mkdir -p /app/test-results
 
-# Set the default command to run tests
-CMD ["pytest", "tests/"]
+# Verify only unit tests are present
+RUN ls -la tests/ && echo "=== Unit tests only ===" && ls -la tests/unit/
+
+# Set the default command to run only unit tests
+CMD ["pytest", "tests/unit/", "-v"]
