@@ -57,6 +57,7 @@ htmlcov/
 .hypothesis/
 reports/
 archive/
+test-results/
 
 # PyBuilder
 target/
