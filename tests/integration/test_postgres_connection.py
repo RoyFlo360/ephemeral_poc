@@ -25,9 +25,12 @@ class TestPostgreSQLConnection:
     def test_database_creation_and_deletion(self, db_connection):
         """Test creating and dropping a test table"""
         with db_connection.cursor() as cursor:
+            # Ensure table doesn't exist from previous runs
+            cursor.execute("DROP TABLE IF EXISTS test_table;")
+            
             # Create a test table
             cursor.execute("""
-                CREATE TABLE IF NOT EXISTS test_table (
+                CREATE TABLE test_table (
                     id SERIAL PRIMARY KEY,
                     name VARCHAR(100),
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP

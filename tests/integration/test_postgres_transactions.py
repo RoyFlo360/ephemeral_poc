@@ -14,9 +14,12 @@ class TestPostgreSQLTransactions:
     def test_transaction_commit(self, db_connection):
         """Test that committed transactions persist data"""
         with db_connection.cursor() as cursor:
+            # Ensure table doesn't exist from previous runs
+            cursor.execute("DROP TABLE IF EXISTS transaction_test;")
+            
             # Create a test table
             cursor.execute("""
-                CREATE TABLE IF NOT EXISTS transaction_test (
+                CREATE TABLE transaction_test (
                     id SERIAL PRIMARY KEY,
                     message TEXT,
                     amount DECIMAL(10,2)
@@ -46,9 +49,12 @@ class TestPostgreSQLTransactions:
     def test_transaction_rollback(self, db_connection):
         """Test that rolled back transactions don't persist data"""
         with db_connection.cursor() as cursor:
+            # Ensure table doesn't exist from previous runs
+            cursor.execute("DROP TABLE IF EXISTS rollback_test;")
+            
             # Create a test table
             cursor.execute("""
-                CREATE TABLE IF NOT EXISTS rollback_test (
+                CREATE TABLE rollback_test (
                     id SERIAL PRIMARY KEY,
                     name VARCHAR(100)
                 );
@@ -88,9 +94,12 @@ class TestPostgreSQLTransactions:
     def test_nested_transactions(self, db_connection):
         """Test nested transaction behavior with savepoints"""
         with db_connection.cursor() as cursor:
+            # Ensure table doesn't exist from previous runs
+            cursor.execute("DROP TABLE IF EXISTS nested_transaction_test;")
+            
             # Create a test table
             cursor.execute("""
-                CREATE TABLE IF NOT EXISTS nested_transaction_test (
+                CREATE TABLE nested_transaction_test (
                     id SERIAL PRIMARY KEY,
                     level INTEGER,
                     description TEXT
@@ -137,10 +146,20 @@ class TestPostgreSQLTransactions:
     
     def test_concurrent_transactions(self, db_connection):
         """Test handling of concurrent transactions"""
+        import time
+        
+        # Use a unique table name to avoid conflicts
+        unique_suffix = int(time.time() * 1000) % 10000
+        table_name = f"concurrent_test_{unique_suffix}"
+        
         with db_connection.cursor() as cursor:
+            # Ensure table doesn't exist from previous runs
+            cursor.execute(f"DROP TABLE IF EXISTS {table_name} CASCADE;")
+            db_connection.commit()
+            
             # Create a test table with a unique constraint
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS concurrent_test (
+            cursor.execute(f"""
+                CREATE TABLE {table_name} (
                     id SERIAL PRIMARY KEY,
                     email VARCHAR(100) UNIQUE,
                     name VARCHAR(100)
@@ -148,8 +167,8 @@ class TestPostgreSQLTransactions:
             """)
             
             # Insert initial data
-            cursor.execute("""
-                INSERT INTO concurrent_test (email, name) 
+            cursor.execute(f"""
+                INSERT INTO {table_name} (email, name) 
                 VALUES (%s, %s);
             """, ("alice@example.com", "Alice"))
             db_connection.commit()
@@ -159,8 +178,8 @@ class TestPostgreSQLTransactions:
             
             try:
                 # Try to insert duplicate email (should fail)
-                cursor.execute("""
-                    INSERT INTO concurrent_test (email, name) 
+                cursor.execute(f"""
+                    INSERT INTO {table_name} (email, name) 
                     VALUES (%s, %s);
                 """, ("alice@example.com", "Alice Duplicate"))
                 
@@ -175,15 +194,15 @@ class TestPostgreSQLTransactions:
                 db_connection.rollback()
                 
                 # Verify original data is still intact
-                cursor.execute("SELECT COUNT(*) FROM concurrent_test;")
+                cursor.execute(f"SELECT COUNT(*) FROM {table_name};")
                 count = cursor.fetchone()[0]
                 assert count == 1
                 
-                cursor.execute("SELECT email, name FROM concurrent_test;")
+                cursor.execute(f"SELECT email, name FROM {table_name};")
                 result = cursor.fetchone()
                 assert result[0] == "alice@example.com"
                 assert result[1] == "Alice"
             
             # Clean up
-            cursor.execute("DROP TABLE concurrent_test;")
+            cursor.execute(f"DROP TABLE {table_name};")
             db_connection.commit()
