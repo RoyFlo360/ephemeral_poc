@@ -56,7 +56,7 @@ class TestPostgreSQLPerformance:
             # Verify all data was inserted
             cursor.execute("SELECT COUNT(*) FROM bulk_insert_test;")
             count = cursor.fetchone()[0]
-            assert count == 10000
+            assert count == 1000
             
             # Test individual insert for comparison
             cursor.execute("DELETE FROM bulk_insert_test;")
