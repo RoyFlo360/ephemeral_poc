@@ -632,6 +632,21 @@ jobs:
                   fi
                 done
               fi
+              
+              echo "" >> test-summary.md
+              echo "### 📋 Raw Integration Test Results" >> test-summary.md
+              echo '```xml' >> test-summary.md
+              
+              # Pretty print the XML for better readability
+              if command -v xmllint >/dev/null 2>&1; then
+                # Use xmllint if available (most Linux systems)
+                xmllint --format test-results/integration/results.xml >> test-summary.md
+              else
+                # Use Python for pretty printing if xmllint not available
+                python3 -c "import xml.dom.minidom; import sys; dom = xml.dom.minidom.parse('test-results/integration/results.xml'); print(dom.toprettyxml(indent='  '))" >> test-summary.md 2>/dev/null || cat test-results/integration/results.xml >> test-summary.md
+              fi
+              
+              echo '```' >> test-summary.md
             fi
             
           else
