@@ -38,7 +38,7 @@ class TestPostgreSQLTransactions:
             cursor.execute("SELECT * FROM transaction_test WHERE message = %s;", ("Test transaction",))
             result = cursor.fetchone()
             assert result is not None
-            assert result[1] != "Test transaction"
+            assert result[1] == "Test transaction"
             assert float(result[2]) == 100.50
             
             # Clean up
