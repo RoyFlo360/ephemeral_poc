@@ -81,7 +81,7 @@ class TestSeleniumBrowser:
         comments_textarea = driver.find_element(By.NAME, "comments")
         
         # Fill out the form
-        customer_name_input.send_keys("John Do")
+        customer_name_input.send_keys("John Doe")
         telephone_input.send_keys("555-123-4567")
         email_input.send_keys("john.doe@example.com")
         
