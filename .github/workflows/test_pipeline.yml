@@ -327,17 +327,23 @@ jobs:
     runs-on: ubuntu-latest
     if: always()  # Always run to ensure comment is posted even if tests fail
     steps:
-      - uses: actions/download-artifact@v4
+      - name: Download unit test results
+        uses: actions/download-artifact@v4
+        continue-on-error: true
         with:
           name: unit-test-results
           path: test-results/unit
       
-      - uses: actions/download-artifact@v4
+      - name: Download integration test results
+        uses: actions/download-artifact@v4
+        continue-on-error: true
         with:
           name: integration-test-results
           path: test-results/integration
       
-      - uses: actions/download-artifact@v4
+      - name: Download selenium test results
+        uses: actions/download-artifact@v4
+        continue-on-error: true
         with:
           name: selenium-test-results
           path: test-results/selenium
@@ -370,10 +376,11 @@ jobs:
           if [ -f "test-results/unit/results.xml" ]; then
             cat test-results/unit/results.xml >&2
           else
-            echo "XML file not found!" >&2
+            echo "Unit test XML file not found!" >&2
           fi
           echo "=== End Debug ===" >&2
           
+          # Check if unit test results exist
           if [ -f "test-results/unit/results.xml" ]; then
             # Parse XML results and generate summary
             echo "### 📊 Test Summary" >> test-summary.md
@@ -508,9 +515,9 @@ jobs:
             fi
             
           else
-            echo "❌ **No test results found**" >> test-summary.md
+            echo "❌ **No unit test results found**" >> test-summary.md
             echo "" >> test-summary.md
-            echo "Tests may have failed before generating results. Check the workflow logs for details." >> test-summary.md
+            echo "Unit tests may have failed before generating results. Check the workflow logs for details." >> test-summary.md
           fi
           
           # Integration Test Results Section
@@ -520,6 +527,7 @@ jobs:
           echo "## 🗄️ Integration Test Results" >> test-summary.md
           echo "" >> test-summary.md
           
+          # Check if integration test results exist
           if [ -f "test-results/integration/results.xml" ]; then
             # Parse integration test XML results
             echo "### 📊 Integration Test Summary" >> test-summary.md
@@ -639,6 +647,7 @@ jobs:
           echo "## 🌐 Selenium Test Results" >> test-summary.md
           echo "" >> test-summary.md
           
+          # Check if selenium test results exist
           if [ -f "test-results/selenium/results.xml" ]; then
             # Parse selenium test XML results
             echo "### 📊 Selenium Test Summary" >> test-summary.md
@@ -758,10 +767,21 @@ jobs:
           echo "## 🎯 Overall Test Summary" >> test-summary.md
           echo "" >> test-summary.md
           
-          # Calculate overall totals
+          # Calculate overall totals (handle missing test results gracefully)
           overall_total=$((total_tests + int_total_tests + sel_total_tests))
           overall_passed=$((passed_tests + int_passed_tests + sel_passed_tests))
           overall_failed=$((failed_tests + int_failed_tests + error_tests + int_error_tests + sel_failed_tests + sel_error_tests))
+          
+          # Ensure we don't have negative numbers
+          if [ "$overall_total" -lt 0 ]; then
+            overall_total=0
+          fi
+          if [ "$overall_passed" -lt 0 ]; then
+            overall_passed=0
+          fi
+          if [ "$overall_failed" -lt 0 ]; then
+            overall_failed=0
+          fi
           
           if [ "$overall_failed" -eq 0 ]; then
             echo "🎉 **All tests passed!** ($overall_passed/$overall_total)" >> test-summary.md
@@ -774,7 +794,14 @@ jobs:
           echo "- **Integration Tests:** $int_passed_tests/$int_total_tests passed" >> test-summary.md
           echo "- **Selenium Tests:** $sel_passed_tests/$sel_total_tests passed" >> test-summary.md
           echo "- **Total Tests:** $overall_total" >> test-summary.md
-          echo "- **Overall Success Rate:** $(( (overall_passed * 100) / overall_total ))%" >> test-summary.md
+          
+          # Calculate overall success rate safely
+          if [ "$overall_total" -gt 0 ]; then
+            overall_success_rate=$(( (overall_passed * 100) / overall_total ))
+            echo "- **Overall Success Rate:** $overall_success_rate%" >> test-summary.md
+          else
+            echo "- **Overall Success Rate:** 0%" >> test-summary.md
+          fi
 
       - name: Comment on PR
         if: github.event_name == 'pull_request'
