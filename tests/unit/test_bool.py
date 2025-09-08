@@ -39,7 +39,7 @@ class TestBooleanComparisons(TestCase):
     def test_boolean_comparisons(self):
         """Test boolean comparison operations"""
         # Equality
-        assert True != True
+        assert True == True
         assert False == False
         assert True != False
         assert False != True
