@@ -134,16 +134,87 @@ def run_integration_tests_with_docker_compose(
             timeout=60
         )
 
-def run_all_tests_sequentially(
-    unit_timeout: int = 600,
-    integration_timeout: int = 600
+def run_selenium_tests_with_docker_compose(
+    compose_file: str = "docker-compose.selenium.yml",
+    timeout: int = 600
 ) -> Tuple[bool, str]:
     """
-    Run both unit tests and integration tests sequentially.
+    Run Selenium tests using Docker Compose.
+    
+    Args:
+        compose_file: Path to Docker Compose file
+        timeout: Max time in seconds to wait for tests
+    
+    Returns:
+        Tuple of (success: bool, logs: str)
+    """
+    try:
+        print(f"Starting Selenium tests with {compose_file}...")
+        
+        # Start the services
+        print("Starting Docker Compose services...")
+        start_result = run(
+            ["docker-compose", "-f", compose_file, "up", "--build", "-d"],
+            capture_output=True,
+            text=True,
+            timeout=timeout
+        )
+        
+        if start_result.returncode != 0:
+            return (False, f"Failed to start services: {start_result.stderr}")
+        
+        # Wait a bit for services to be ready
+        print("Waiting for services to be ready...")
+        
+        # Run the tests
+        print("Running Selenium tests...")
+        test_result = run(
+            ["docker-compose", "-f", compose_file, "logs", "-f", "selenium-tests"],
+            capture_output=True,
+            text=True,
+            timeout=timeout
+        )
+        
+        # Get the test results
+        logs_result = run(
+            ["docker-compose", "-f", compose_file, "logs", "selenium-tests"],
+            capture_output=True,
+            text=True,
+            timeout=60
+        )
+        
+        logs = logs_result.stdout + logs_result.stderr
+        
+        # Check if tests passed by looking for test results
+        success = "Selenium tests completed" in logs and "FAILED" not in logs
+        
+        return (success, logs)
+        
+    except TimeoutExpired:
+        return (False, "Selenium tests timed out")
+    except Exception as e:
+        return (False, f"Error running Selenium tests: {str(e)}")
+    finally:
+        # Clean up
+        print("Cleaning up Docker Compose services...")
+        run(
+            ["docker-compose", "-f", compose_file, "down"],
+            capture_output=True,
+            timeout=60
+        )
+
+def run_all_tests_sequentially(
+    unit_timeout: int = 600,
+    integration_timeout: int = 600,
+    selenium_timeout: int = 600
+) -> Tuple[bool, str]:
+    """
+    Run unit tests, integration tests, and Selenium tests sequentially.
     
     Args:
         unit_timeout: Max time in seconds to wait for unit tests
         integration_timeout: Max time in seconds to wait for integration tests
+        selenium_timeout: Max time in seconds to wait for Selenium tests
     
     Returns:
         Tuple of (overall_success: bool, combined_logs: str)
@@ -187,12 +258,30 @@ def run_all_tests_sequentially(
         print("❌ Integration tests failed!")
         overall_success = False
     
+    # Step 3: Run Selenium Tests
+    print("\n🔧 Step 3: Running Selenium Tests...")
+    selenium_success, selenium_logs = run_selenium_tests_with_docker_compose(
+        timeout=selenium_timeout
+    )
+    
+    all_logs.append("\n" + "="*50)
+    all_logs.append("SELENIUM TESTS OUTPUT:")
+    all_logs.append("="*50)
+    all_logs.append(selenium_logs)
+    
+    if selenium_success:
+        print("✅ Selenium tests passed!")
+    else:
+        print("❌ Selenium tests failed!")
+        overall_success = False
+    
     # Summary
     print("\n" + "="*50)
     print("TEST SUMMARY:")
     print("="*50)
     print(f"Unit Tests: {'✅ PASSED' if unit_success else '❌ FAILED'}")
     print(f"Integration Tests: {'✅ PASSED' if integration_success else '❌ FAILED'}")
+    print(f"Selenium Tests: {'✅ PASSED' if selenium_success else '❌ FAILED'}")
     print(f"Overall Result: {'✅ ALL TESTS PASSED' if overall_success else '❌ SOME TESTS FAILED'}")
     print("="*50)
     
@@ -206,7 +295,7 @@ def run_tests_in_ephemeral_container(
     Run tests based on the specified type.
     
     Args:
-        test_type: Either "unit", "integration", or "all"
+        test_type: Either "unit", "integration", "selenium", or "all"
         **kwargs: Additional arguments passed to the specific test runner
     
     Returns:
@@ -214,6 +303,8 @@ def run_tests_in_ephemeral_container(
     """
     if test_type.lower() == "integration":
         return run_integration_tests_with_docker_compose(**kwargs)
+    elif test_type.lower() == "selenium":
+        return run_selenium_tests_with_docker_compose(**kwargs)
     elif test_type.lower() == "all":
         return run_all_tests_sequentially(**kwargs)
     else:
@@ -232,6 +323,9 @@ if __name__ == "__main__":
     if test_type.lower() == "integration":
         print("Running integration tests with Docker Compose...")
         success, logs = run_integration_tests_with_docker_compose()
+    elif test_type.lower() == "selenium":
+        print("Running Selenium tests with Docker Compose...")
+        success, logs = run_selenium_tests_with_docker_compose()
     elif test_type.lower() == "unit":
         print("Running unit tests in ephemeral container...")
         success, logs = run_unit_tests_in_ephemeral_container()

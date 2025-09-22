@@ -185,24 +185,172 @@ jobs:
           name: integration-test-results
           path: test-results/integration/results.xml
 
-  report:
+  selenium-tests:
     needs: [unit-tests, integration-tests]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Docker Compose (if needed)
+        run: |
+          echo "=== Docker Environment Check ==="
+          echo "Docker version:"
+          docker --version
+          echo ""
+          echo "Docker Compose version:"
+          docker compose version 2>/dev/null || echo "docker compose not available"
+          echo ""
+          echo "Checking for docker-compose:"
+          which docker-compose 2>/dev/null || echo "docker-compose not found in PATH"
+          echo "=== End Docker Check ==="
+          
+          # Check if docker compose is available
+          if ! docker compose version >/dev/null 2>&1; then
+            echo "Installing Docker Compose..."
+            # Install docker-compose as fallback
+            sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+            sudo chmod +x /usr/local/bin/docker-compose
+            echo "Docker Compose installed as fallback"
+          else
+            echo "Docker Compose is available"
+          fi
+
+      - name: Run selenium tests
+        run: |
+          mkdir -p test-results/selenium
+          # Use docker compose if available, otherwise fall back to docker-compose
+          if docker compose version >/dev/null 2>&1; then
+            echo "Using 'docker compose'"
+            docker compose -f docker-compose.selenium.yml up \
+              --build \
+              --abort-on-container-exit \
+              --exit-code-from selenium-tests \
+              --remove-orphans
+          else
+            echo "Using 'docker-compose' fallback"
+            docker-compose -f docker-compose.selenium.yml up \
+              --build \
+              --abort-on-container-exit \
+              --exit-code-from selenium-tests \
+              --remove-orphans
+          fi
+      
+      - name: Check docker-compose logs
+        if: always()
+        run: |
+          echo "=== Docker Compose Logs ==="
+          # Use docker compose if available, otherwise fall back to docker-compose
+          if docker compose version >/dev/null 2>&1; then
+            docker compose -f docker-compose.selenium.yml logs selenium-tests || echo "Failed to get selenium-tests logs"
+          else
+            docker-compose -f docker-compose.selenium.yml logs selenium-tests || echo "Failed to get selenium-tests logs"
+          fi
+          echo "=== End Logs ==="
+      
+      - name: Check test results directory
+        if: always()
+        run: |
+          echo "=== Test Results Directory Check ==="
+          echo "Current directory: $(pwd)"
+          echo "test-results directory exists: $(test -d test-results && echo "Yes" || echo "No")"
+          if [ -d test-results ]; then
+            echo "test-results contents:"
+            ls -la test-results/
+            if [ -d test-results/selenium ]; then
+              echo "test-results/selenium contents:"
+              ls -la test-results/selenium/
+            fi
+          fi
+          echo "=== End Directory Check ==="
+
+      - name: Save selenium test results
+        if: always()
+        run: |
+          echo "=== Debug: Container Discovery ==="
+          echo "Current directory: $(pwd)"
+          echo "Directory contents:"
+          ls -la
+          
+          echo ""
+          echo "All running containers:"
+          docker ps -a
+          
+          echo ""
+          echo "All containers (including stopped):"
+          docker ps -aq
+          
+          echo ""
+          echo "=== End Debug ==="
+          
+          # Try to find the selenium-tests container by specific name first
+          CONTAINER_ID=$(docker ps -aqf "name=selenium-test-container" 2>/dev/null || echo "")
+          echo "Container ID for 'selenium-test-container': $CONTAINER_ID"
+          
+          # If not found, try alternative naming patterns
+          if [ -z "$CONTAINER_ID" ]; then
+            CONTAINER_ID=$(docker ps -aqf "name=ephemeral_poc-selenium-tests-1" 2>/dev/null || echo "")
+            echo "Container ID for 'ephemeral_poc-selenium-tests-1': $CONTAINER_ID"
+          fi
+          
+          # If still not found, try to find any container with test results
+          if [ -z "$CONTAINER_ID" ]; then
+            CONTAINER_ID=$(docker ps -aqf "ancestor=ephemeral_poc_selenium-tests" 2>/dev/null || echo "")
+            echo "Container ID for 'ancestor=ephemeral_poc_selenium-tests': $CONTAINER_ID"
+          fi
+          
+          # If container found, copy results
+          if [ ! -z "$CONTAINER_ID" ]; then
+            echo "Found container: $CONTAINER_ID"
+            docker cp "$CONTAINER_ID:/app/test-results/selenium/results.xml" test-results/selenium/ || echo "Failed to copy from container"
+          else
+            echo "No container found, checking if results exist in mounted volume"
+          fi
+          
+          # Also check if results were written to the mounted volume
+          if [ -f "test-results/selenium/results.xml" ]; then
+            echo "Test results found in mounted volume"
+          else
+            echo "No test results found, creating empty results file"
+            mkdir -p test-results/selenium
+            echo '<?xml version="1.0" encoding="utf-8"?><testsuites><testsuite name="selenium" tests="0" failures="0" errors="0" skipped="0" time="0.0"></testsuite></testsuites>' > test-results/selenium/results.xml
+          fi
+
+      - name: Publish selenium test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: selenium-test-results
+          path: test-results/selenium/results.xml
+
+  report:
+    needs: [unit-tests, integration-tests, selenium-tests]
     runs-on: ubuntu-latest
     if: always()  # Always run to ensure comment is posted even if tests fail
     steps:
-      - uses: actions/download-artifact@v4
+      - name: Download unit test results
+        uses: actions/download-artifact@v4
+        continue-on-error: true
         with:
           name: unit-test-results
           path: test-results/unit
       
-      - uses: actions/download-artifact@v4
+      - name: Download integration test results
+        uses: actions/download-artifact@v4
+        continue-on-error: true
         with:
           name: integration-test-results
           path: test-results/integration
+      
+      - name: Download selenium test results
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: selenium-test-results
+          path: test-results/selenium
 
       - name: Generate Test Summary Report
         run: |
-          # Initialize unit & integration test variables
+          # Initialize unit, integration & selenium test variables
           unit_suite_total=0
           unit_suite_failures=0
           unit_suite_errors=0
@@ -214,6 +362,12 @@ jobs:
           int_error_tests=0
           int_skipped_tests=0
           
+          sel_total_tests=0
+          sel_passed_tests=0
+          sel_failed_tests=0
+          sel_error_tests=0
+          sel_skipped_tests=0
+          
           echo "## 🧪 Unit Test Results" > test-summary.md
           echo "" >> test-summary.md
           
@@ -222,10 +376,11 @@ jobs:
           if [ -f "test-results/unit/results.xml" ]; then
             cat test-results/unit/results.xml >&2
           else
-            echo "XML file not found!" >&2
+            echo "Unit test XML file not found!" >&2
           fi
           echo "=== End Debug ===" >&2
           
+          # Check if unit test results exist
           if [ -f "test-results/unit/results.xml" ]; then
             # Parse XML results and generate summary
             echo "### 📊 Test Summary" >> test-summary.md
@@ -360,9 +515,9 @@ jobs:
             fi
             
           else
-            echo "❌ **No test results found**" >> test-summary.md
+            echo "❌ **No unit test results found**" >> test-summary.md
             echo "" >> test-summary.md
-            echo "Tests may have failed before generating results. Check the workflow logs for details." >> test-summary.md
+            echo "Unit tests may have failed before generating results. Check the workflow logs for details." >> test-summary.md
           fi
           
           # Integration Test Results Section
@@ -372,6 +527,7 @@ jobs:
           echo "## 🗄️ Integration Test Results" >> test-summary.md
           echo "" >> test-summary.md
           
+          # Check if integration test results exist
           if [ -f "test-results/integration/results.xml" ]; then
             # Parse integration test XML results
             echo "### 📊 Integration Test Summary" >> test-summary.md
@@ -476,12 +632,162 @@ jobs:
                   fi
                 done
               fi
+              
+              echo "" >> test-summary.md
+              echo "### 📋 Raw Integration Test Results" >> test-summary.md
+              echo '```xml' >> test-summary.md
+              
+              # Pretty print the XML for better readability
+              if command -v xmllint >/dev/null 2>&1; then
+                # Use xmllint if available (most Linux systems)
+                xmllint --format test-results/integration/results.xml >> test-summary.md
+              else
+                # Use Python for pretty printing if xmllint not available
+                python3 -c "import xml.dom.minidom; import sys; dom = xml.dom.minidom.parse('test-results/integration/results.xml'); print(dom.toprettyxml(indent='  '))" >> test-summary.md 2>/dev/null || cat test-results/integration/results.xml >> test-summary.md
+              fi
+              
+              echo '```' >> test-summary.md
             fi
             
           else
             echo "❌ **No integration test results found**" >> test-summary.md
             echo "" >> test-summary.md
             echo "Integration tests may have failed before generating results. Check the workflow logs for details." >> test-summary.md
+          fi
+          
+          # Selenium Test Results Section
+          echo "" >> test-summary.md
+          echo "---" >> test-summary.md
+          echo "" >> test-summary.md
+          echo "## 🌐 Selenium Test Results" >> test-summary.md
+          echo "" >> test-summary.md
+          
+          # Check if selenium test results exist
+          if [ -f "test-results/selenium/results.xml" ]; then
+            # Parse selenium test XML results
+            echo "### 📊 Selenium Test Summary" >> test-summary.md
+            echo "" >> test-summary.md
+            
+            # Extract test counts from selenium test XML
+            sel_unit_suite_total=$(grep -o 'tests="[0-9]*"' test-results/selenium/results.xml 2>/dev/null | sed 's/tests="\([0-9]*\)"/\1/' || echo "0")
+            sel_unit_suite_failures=$(grep -o 'failures="[0-9]*"' test-results/selenium/results.xml 2>/dev/null | sed 's/failures="\([0-9]*\)"/\1/' || echo "0")
+            sel_unit_suite_errors=$(grep -o 'errors="[0-9]*"' test-results/selenium/results.xml 2>/dev/null | sed 's/errors="\([0-9]*\)"/\1/' || echo "0")
+            sel_unit_suite_skipped=$(grep -o 'skipped="[0-9]*"' test-results/selenium/results.xml 2>/dev/null | sed 's/skipped="\([0-9]*\)"/\1/' || echo "0")
+            
+            # Fallback: Count individual elements
+            sel_unit_element_total=$(grep -c '<testcase' test-results/selenium/results.xml 2>/dev/null || echo "0")
+            sel_unit_element_failures=$(grep -c '<failure' test-results/selenium/results.xml 2>/dev/null || echo "0")
+            sel_unit_element_errors=$(grep -c '<error' test-results/selenium/results.xml 2>/dev/null || echo "0")
+            sel_element_skipped=$(grep -c '<skipped' test-results/selenium/results.xml 2>/dev/null || echo "0")
+            
+            # Use testsuite attributes if available, otherwise fall back to element counts
+            if [ "$sel_unit_suite_total" != "0" ] && [ "$sel_unit_suite_total" != "" ]; then
+              sel_total_tests=$sel_unit_suite_total
+              sel_failed_tests=$sel_unit_suite_failures
+              sel_error_tests=$sel_unit_suite_errors
+              sel_skipped_tests=$sel_unit_suite_skipped
+            else
+              sel_total_tests=$sel_unit_element_total
+              sel_failed_tests=$sel_unit_element_failures
+              sel_error_tests=$sel_unit_element_errors
+              sel_skipped_tests=$sel_element_skipped
+            fi
+            
+            # Clean up any whitespace and ensure they are valid numbers
+            sel_total_tests=$(echo "$sel_total_tests" | tr -d '[:space:]')
+            sel_failed_tests=$(echo "$sel_failed_tests" | tr -d '[:space:]')
+            sel_error_tests=$(echo "$sel_error_tests" | tr -d '[:space:]')
+            sel_skipped_tests=$(echo "$sel_skipped_tests" | tr -d '[:space:]')
+            
+            # Set default values if empty
+            sel_total_tests=${sel_total_tests:-0}
+            sel_failed_tests=${sel_failed_tests:-0}
+            sel_error_tests=${sel_error_tests:-0}
+            sel_skipped_tests=${sel_skipped_tests:-0}
+            
+            # Calculate passed selenium tests
+            sel_passed_tests=$((sel_total_tests - sel_failed_tests - sel_error_tests - sel_skipped_tests))
+            
+            # Ensure we don't have negative numbers
+            if [ "$sel_passed_tests" -lt 0 ]; then
+              sel_passed_tests=0
+            fi
+            
+            # Create visual status indicators for selenium tests
+            if [ "$sel_failed_tests" -eq 0 ] && [ "$sel_error_tests" -eq 0 ]; then
+              echo "✅ **All selenium tests passed!** ($sel_total_tests/$sel_total_tests)" >> test-summary.md
+              echo "" >> test-summary.md
+              echo "🎉 Great job! All selenium tests are passing." >> test-summary.md
+            else
+              echo "❌ **Selenium tests failed!** ($sel_passed_tests/$sel_total_tests passed, $((sel_failed_tests + sel_error_tests)) failed)" >> test-summary.md
+              echo "" >> test-summary.md
+              echo "⚠️  Some selenium tests are failing. Please fix them before merging." >> test-summary.md
+            fi
+            
+            echo "" >> test-summary.md
+            echo "### 📈 Selenium Test Statistics" >> test-summary.md
+            echo "- **Total Tests:** $sel_total_tests" >> test-summary.md
+            echo "- **Passed:** $sel_passed_tests" >> test-summary.md
+            echo "- **Failed:** $sel_failed_tests" >> test-summary.md
+            if [ "$sel_error_tests" -gt 0 ]; then
+              echo "- **Errors:** $sel_error_tests" >> test-summary.md
+            fi
+            if [ "$sel_skipped_tests" -gt 0 ]; then
+              echo "- **Skipped:** $sel_skipped_tests" >> test-summary.md
+            fi
+            
+            # Calculate selenium test success rate
+            if [ "$sel_total_tests" -gt 0 ]; then
+              sel_success_rate=$(( (sel_passed_tests * 100) / sel_total_tests ))
+              echo "- **Success Rate:** $sel_success_rate%" >> test-summary.md
+            else
+              echo "- **Success Rate:** 0%" >> test-summary.md
+            fi
+            
+            # Add selenium test details if there are failures or errors
+            if [ "$sel_failed_tests" -gt 0 ] || [ "$sel_error_tests" -gt 0 ]; then
+              echo "" >> test-summary.md
+              echo "### 🔍 Failed Selenium Tests Details" >> test-summary.md
+              
+              if [ "$sel_failed_tests" -gt 0 ]; then
+                echo "#### ❌ Selenium Test Failures:" >> test-summary.md
+                # Extract test names and failure messages
+                grep -A 10 '<testcase' test-results/selenium/results.xml 2>/dev/null | while IFS= read -r line; do
+                  if [[ $line == *"name="* ]]; then
+                    test_name=$(echo "$line" | sed -n 's/.*name="\([^"]*\)".*/\1/p')
+                    if [ ! -z "$test_name" ]; then
+                      echo "- **$test_name**" >> test-summary.md
+                    fi
+                  elif [[ $line == *"<failure"* ]]; then
+                    # Extract failure message
+                    failure_msg=$(echo "$line" | sed -n 's/.*<failure[^>]*>\(.*\)<\/failure>.*/\1/p')
+                    if [ ! -z "$failure_msg" ]; then
+                      echo "  - Failure: \`$failure_msg\`" >> test-summary.md
+                    fi
+                  fi
+                done
+              fi
+              
+              echo "" >> test-summary.md
+              echo "### 📋 Raw Selenium Test Results" >> test-summary.md
+              echo '```xml' >> test-summary.md
+              
+              # Pretty print the XML for better readability
+              if command -v xmllint >/dev/null 2>&1; then
+                # Use xmllint if available (most Linux systems)
+                xmllint --format test-results/selenium/results.xml >> test-summary.md
+              else
+                # Use Python for pretty printing if xmllint not available
+                python3 -c "import xml.dom.minidom; import sys; dom = xml.dom.minidom.parse('test-results/selenium/results.xml'); print(dom.toprettyxml(indent='  '))" >> test-summary.md 2>/dev/null || cat test-results/selenium/results.xml >> test-summary.md
+              fi
+              
+              echo '```' >> test-summary.md
+            fi
+            
+          else
+            echo "❌ **No selenium test results found**" >> test-summary.md
+            echo "" >> test-summary.md
+            echo "Selenium tests may have failed before generating results. Check the workflow logs for details." >> test-summary.md
           fi
           
           # Overall Test Summary
@@ -491,10 +797,21 @@ jobs:
           echo "## 🎯 Overall Test Summary" >> test-summary.md
           echo "" >> test-summary.md
           
-          # Calculate overall totals
-          overall_total=$((total_tests + int_total_tests))
-          overall_passed=$((passed_tests + int_passed_tests))
-          overall_failed=$((failed_tests + int_failed_tests + error_tests + int_error_tests))
+          # Calculate overall totals (handle missing test results gracefully)
+          overall_total=$((total_tests + int_total_tests + sel_total_tests))
+          overall_passed=$((passed_tests + int_passed_tests + sel_passed_tests))
+          overall_failed=$((failed_tests + int_failed_tests + error_tests + int_error_tests + sel_failed_tests + sel_error_tests))
+          
+          # Ensure we don't have negative numbers
+          if [ "$overall_total" -lt 0 ]; then
+            overall_total=0
+          fi
+          if [ "$overall_passed" -lt 0 ]; then
+            overall_passed=0
+          fi
+          if [ "$overall_failed" -lt 0 ]; then
+            overall_failed=0
+          fi
           
           if [ "$overall_failed" -eq 0 ]; then
             echo "🎉 **All tests passed!** ($overall_passed/$overall_total)" >> test-summary.md
@@ -505,8 +822,16 @@ jobs:
           echo "" >> test-summary.md
           echo "- **Unit Tests:** $passed_tests/$total_tests passed" >> test-summary.md
           echo "- **Integration Tests:** $int_passed_tests/$int_total_tests passed" >> test-summary.md
+          echo "- **Selenium Tests:** $sel_passed_tests/$sel_total_tests passed" >> test-summary.md
           echo "- **Total Tests:** $overall_total" >> test-summary.md
-          echo "- **Overall Success Rate:** $(( (overall_passed * 100) / overall_total ))%" >> test-summary.md
+          
+          # Calculate overall success rate safely
+          if [ "$overall_total" -gt 0 ]; then
+            overall_success_rate=$(( (overall_passed * 100) / overall_total ))
+            echo "- **Overall Success Rate:** $overall_success_rate%" >> test-summary.md
+          else
+            echo "- **Overall Success Rate:** 0%" >> test-summary.md
+          fi
 
       - name: Comment on PR
         if: github.event_name == 'pull_request'
@@ -559,7 +884,7 @@ jobs:
               // Find existing test result comment (look for either unit or integration test results)
               const existingComment = comments.find(comment => 
                 comment.user.type === 'Bot' && 
-                (comment.body.includes('🧪 Unit Test Results') || comment.body.includes('🗄️ Integration Test Results'))
+                (comment.body.includes('🧪 Unit Test Results') || comment.body.includes('🗄️ Integration Test Results') || comment.body.includes('🌐 Selenium Test Results'))
               );
               
               if (existingComment) {

@@ -1,121 +1,53 @@
-# PostgreSQL Integration Tests
+# Integration Tests
 
-This directory contains integration tests that verify PostgreSQL 14 functionality using Docker containers.
+This directory contains integration tests that test the system as a whole, including database connections, performance, and web browser automation.
 
-## Test Cases
+## Test Types
 
-### 1. `test_postgres_connection.py`
-Tests basic PostgreSQL connection functionality:
-- Database connection establishment
-- Table creation and deletion
-- Data insertion and retrieval
-- Basic SQL operations
+### PostgreSQL Tests
+- **test_postgres_connection.py**: Tests basic database connectivity and operations
+- **test_postgres_performance.py**: Tests database performance, indexing, and concurrency
+- **test_postgres_transactions.py**: Tests transaction handling and rollback scenarios
 
-### 2. `test_postgres_transactions.py`
-Tests PostgreSQL transaction handling:
-- Transaction commit and rollback
-- Nested transactions with savepoints
-- Concurrent transaction handling
-- Constraint violations and error handling
-
-### 3. `test_postgres_performance.py`
-Tests PostgreSQL performance and advanced features:
-- Bulk insert performance with `execute_values`
-- Index performance impact
-- Connection pooling and concurrency
-- Database statistics and monitoring
+### Selenium Browser Tests
+- **tests/browser_tests/**: Contains Selenium browser automation tests in a separate directory
 
 ## Running the Tests
 
-### Prerequisites
-- Docker and Docker Compose installed
-- Python 3.11+ (for local development)
-
-### Using Docker Compose (Recommended)
+### PostgreSQL Tests
 ```bash
-# Run all integration tests
-docker-compose -f docker-compose.integration.yml up --build --abort-on-container-exit
+# Run PostgreSQL integration tests
+docker-compose -f docker-compose.integration.yml up --build
 
-# Run tests in background
-docker-compose -f docker-compose.integration.yml up -d --build
-
-# View logs
-docker-compose -f docker-compose.integration.yml logs -f app
-
-# Stop and clean up
-docker-compose -f docker-compose.integration.yml down
+# Or use the test runner
+python test_runner.py integration
 ```
 
-### Local Development
+### Selenium Tests
 ```bash
-# Install dependencies
-pip install -r requirements.txt
+# Run Selenium tests
+docker-compose -f docker-compose.selenium.yml up --build
 
-# Set environment variables
-export POSTGRES_HOST=localhost
-export POSTGRES_PORT=5432
-export POSTGRES_DB=test
-export POSTGRES_USER=test
-export POSTGRES_PASSWORD=test
-
-# Start PostgreSQL container
-docker run -d \
-  --name postgres-test \
-  -e POSTGRES_PASSWORD=test \
-  -e POSTGRES_USER=test \
-  -e POSTGRES_DB=test \
-  -p 5432:5432 \
-  postgres:14
-
-# Wait for PostgreSQL to be ready
-sleep 10
-
-# Run tests
-pytest tests/integration/ -v
-
-# Clean up
-docker stop postgres-test
-docker rm postgres-test
+# Or use the test runner
+python test_runner.py selenium
 ```
 
-## Test Configuration
-
-The tests use the following PostgreSQL configuration:
-- **Host**: `postgres` (Docker service name) or `localhost` (local)
-- **Port**: `5432`
-- **Database**: `test`
-- **User**: `test`
-- **Password**: `test`
+### All Tests
+```bash
+# Run all tests sequentially
+python test_runner.py all
+```
 
 ## Test Results
 
-Test results are generated in JUnit XML format and saved to:
-- `test-results/integration/results.xml` (when running in Docker)
-- Console output (when running locally)
+Test results are stored in the `test-results/` directory:
+- `test-results/integration/` - PostgreSQL test results
+- `test-results/selenium/` - Selenium test results
 
-## Troubleshooting
+## Selenium Test Details
 
-### Connection Issues
-- Ensure PostgreSQL container is running and healthy
-- Check that ports are not conflicting
-- Verify environment variables are set correctly
+The Selenium tests run in a headless Chrome browser container and test:
+1. **Basic webpage loading** - Verifies page loading, title, and content
+2. **Form interaction** - Tests form filling, validation, and element interaction
 
-### Permission Issues
-- Ensure the test user has appropriate database permissions
-- Check that the test database exists and is accessible
-
-### Performance Issues
-- Some performance tests may vary based on system resources
-- Consider adjusting test data sizes for your environment
-- Monitor system resources during test execution
-
-## Adding New Tests
-
-When adding new integration tests:
-
-1. Create a new test file in this directory
-2. Use the `postgres_connection` fixture for database access
-3. Follow the existing test patterns and naming conventions
-4. Ensure proper cleanup in test teardown
-5. Add appropriate error handling and assertions
-6. Document any new dependencies or requirements
+These tests use httpbin.org as test targets to avoid external dependencies.

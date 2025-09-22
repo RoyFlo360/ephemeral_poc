@@ -1,0 +1,25 @@
+services:
+  selenium-tests:
+    build:
+      context: .
+      dockerfile: dockerfile.selenium
+    container_name: selenium-test-container
+    volumes:
+      - ./test-results:/app/test-results
+    environment:
+      - PYTHONPATH=/app
+      - DISPLAY=:99
+    command: >
+      sh -c "
+        mkdir -p test-results/selenium &&
+        pytest --junitxml=test-results/selenium/results.xml --tb=short tests/browser_tests/ &&
+        echo 'Selenium tests completed' &&
+        ls -la test-results/selenium/ &&
+        cat test-results/selenium/results.xml
+      "
+    networks:
+      - selenium-network
+
+networks:
+  selenium-network:
+    driver: bridge
