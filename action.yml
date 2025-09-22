@@ -1,0 +1,81 @@
+name: 'Ephemeral Test Suite'
+description: 'Run comprehensive test suite with unit, integration, and selenium tests in Docker containers'
+inputs:
+  test-type:
+    description: 'Type of tests to run (unit, integration, selenium, all)'
+    required: false
+    default: 'all'
+  timeout:
+    description: 'Timeout in seconds for tests'
+    required: false
+    default: '600'
+  working-directory:
+    description: 'Working directory to run tests from (useful for monorepos)'
+    required: false
+    default: '.'
+  upload-results:
+    description: 'Whether to upload test results as artifacts'
+    required: false
+    default: 'true'
+
+outputs:
+  success:
+    description: 'Whether all tests passed successfully'
+    value: ${{ steps.run-tests.outputs.success }}
+  logs:
+    description: 'Test execution logs'
+    value: ${{ steps.run-tests.outputs.logs }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Checkout test repository
+      uses: actions/checkout@v4
+      with:
+        path: ephemeral-test-suite
+        
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: Install Docker Compose
+      run: |
+        sudo curl -L "https://github.com/docker/compose/releases/download/v2.20.0/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+        sudo chmod +x /usr/local/bin/docker-compose
+      shell: bash
+        
+    - name: Run Tests
+      id: run-tests
+      run: |
+        cd ephemeral-test-suite
+        echo "Running ${{ inputs.test-type }} tests with timeout ${{ inputs.timeout }}s"
+        
+        # Set timeout for the test execution
+        timeout ${{ inputs.timeout }} python test_runner.py ${{ inputs.test-type }} || {
+          EXIT_CODE=$?
+          if [ $EXIT_CODE -eq 124 ]; then
+            echo "Tests timed out after ${{ inputs.timeout }} seconds"
+            echo "success=false" >> $GITHUB_OUTPUT
+            echo "logs=Tests timed out" >> $GITHUB_OUTPUT
+            exit 1
+          else
+            echo "Tests failed with exit code $EXIT_CODE"
+            echo "success=false" >> $GITHUB_OUTPUT
+            echo "logs=Tests failed with exit code $EXIT_CODE" >> $GITHUB_OUTPUT
+            exit $EXIT_CODE
+          fi
+        }
+        
+        # If we get here, tests passed
+        echo "success=true" >> $GITHUB_OUTPUT
+        echo "logs=All tests completed successfully" >> $GITHUB_OUTPUT
+      shell: bash
+      
+    - name: Upload Test Results
+      if: always() && inputs.upload-results == 'true'
+      uses: actions/upload-artifact@v3
+      with:
+        name: ephemeral-test-results-${{ inputs.test-type }}
+        path: ephemeral-test-suite/test-results/
+        retention-days: 3
