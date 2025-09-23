@@ -50,26 +50,16 @@ runs:
         pip install --upgrade pip
         pip install -r requirements.txt
         echo "Installed Python packages:"
-        pip list | grep -E "(docker|pytest|psycopg2|selenium)"
-      shell: bash
-
-        
-    - name: Install Python dependencies
-      run: |
-        cd ephemeral-test-suite
-        pip install --upgrade pip
-        pip install -r requirements.txt
-        echo "Installed Python packages:"
         python -c "
-import pkg_resources
-packages = ['docker', 'pytest', 'psycopg2', 'selenium']
-for pkg in packages:
-    try:
-        version = pkg_resources.get_distribution(pkg).version
-        print(f'{pkg:<15} {version}')
-    except pkg_resources.DistributionNotFound:
-        print(f'{pkg:<15} not found')
-"
+        import pkg_resources
+        packages = ['docker', 'pytest', 'psycopg2', 'selenium']
+        for pkg in packages:
+            try:
+                version = pkg_resources.get_distribution(pkg).version
+                print(f'{pkg:<15} {version}')
+            except pkg_resources.DistributionNotFound:
+                print(f'{pkg:<15} not found')
+        "
       shell: bash
         
     - name: Install Docker Compose
