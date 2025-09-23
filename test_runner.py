@@ -1,7 +1,18 @@
 from docker import from_env
-from sys import argv, exit
+from sys import argv, exit, stdout
 from subprocess import run, TimeoutExpired
 from typing import Tuple
+import signal
+import sys
+
+def signal_handler(signum, frame):
+    """Handle signals gracefully to prevent broken pipe errors."""
+    print(f"\nReceived signal {signum}. Exiting gracefully...")
+    sys.exit(0)
+
+# Set up signal handlers
+signal.signal(signal.SIGPIPE, signal.SIG_DFL)  # Handle broken pipe gracefully
+signal.signal(signal.SIGTERM, signal_handler)  # Handle termination gracefully
 
 def run_unit_tests_in_ephemeral_container(
     image_name: str = "myephemeral-test",
@@ -311,40 +322,53 @@ def run_tests_in_ephemeral_container(
         return run_unit_tests_in_ephemeral_container(**kwargs)
 
 if __name__ == "__main__":
-    # Check command line arguments
-    test_type = "all"  # default to running all tests
-    if len(argv) > 1:
-        test_type = argv[1]
-    
-    print(f"=== Test Runner ===")
-    print(f"Test type: {test_type}")
-    print(f"==================")
-    
-    if test_type.lower() == "integration":
-        print("Running integration tests with Docker Compose...")
-        success, logs = run_integration_tests_with_docker_compose()
-    elif test_type.lower() == "selenium":
-        print("Running Selenium tests with Docker Compose...")
-        success, logs = run_selenium_tests_with_docker_compose()
-    elif test_type.lower() == "unit":
-        print("Running unit tests in ephemeral container...")
-        success, logs = run_unit_tests_in_ephemeral_container()
-    elif test_type.lower() == "all":
-        print("Running all tests sequentially...")
-        success, logs = run_all_tests_sequentially()
-    else:
-        print(f"Unknown test type: {test_type}. Defaulting to all tests...")
-        success, logs = run_all_tests_sequentially()
-    
-    print("\n" + "="*50)
-    print("FINAL TEST OUTPUT:")
-    print("="*50)
-    print(logs)
-    print("="*50)
-    
-    if success:
-        print(f"\n✅ All tests completed successfully!")
-    else:
-        print(f"\n❌ Some tests failed!")
-    
-    exit(0 if success else 1)
+    try:
+        # Check command line arguments
+        test_type = "all"  # default to running all tests
+        if len(argv) > 1:
+            test_type = argv[1]
+        
+        print(f"=== Test Runner ===")
+        print(f"Test type: {test_type}")
+        print(f"==================")
+        
+        if test_type.lower() == "integration":
+            print("Running integration tests with Docker Compose...")
+            success, logs = run_integration_tests_with_docker_compose()
+        elif test_type.lower() == "selenium":
+            print("Running Selenium tests with Docker Compose...")
+            success, logs = run_selenium_tests_with_docker_compose()
+        elif test_type.lower() == "unit":
+            print("Running unit tests in ephemeral container...")
+            success, logs = run_unit_tests_in_ephemeral_container()
+        elif test_type.lower() == "all":
+            print("Running all tests sequentially...")
+            success, logs = run_all_tests_sequentially()
+        else:
+            print(f"Unknown test type: {test_type}. Defaulting to all tests...")
+            success, logs = run_all_tests_sequentially()
+        
+        print("\n" + "="*50)
+        print("FINAL TEST OUTPUT:")
+        print("="*50)
+        print(logs)
+        print("="*50)
+        
+        if success:
+            print(f"\n✅ All tests completed successfully!")
+        else:
+            print(f"\n❌ Some tests failed!")
+        
+        exit(0 if success else 1)
+        
+    except BrokenPipeError:
+        # Handle broken pipe gracefully
+        print("Broken pipe detected. Exiting gracefully...")
+        exit(0)
+    except KeyboardInterrupt:
+        # Handle Ctrl+C gracefully
+        print("\nTest execution interrupted by user.")
+        exit(130)
+    except Exception as e:
+        print(f"Unexpected error: {str(e)}")
+        exit(1)
