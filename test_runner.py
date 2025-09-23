@@ -355,6 +355,7 @@ if __name__ == "__main__":
         # Set up timeout signal
         signal.signal(signal.SIGALRM, timeout_handler)
         signal.alarm(timeout_seconds)
+
         
         try:
             if test_type.lower() == "integration":
@@ -398,36 +399,52 @@ if __name__ == "__main__":
             
         print(f"=== Test Runner ===")
         print(f"Test type: {test_type}")
+        print(f"Timeout: {timeout_seconds} seconds")
         print(f"==================")
         
-        if test_type.lower() == "integration":
-            print("Running integration tests with Docker Compose...")
-            success, logs = run_integration_tests_with_docker_compose()
-        elif test_type.lower() == "selenium":
-            print("Running Selenium tests with Docker Compose...")
-            success, logs = run_selenium_tests_with_docker_compose()
-        elif test_type.lower() == "unit":
-            print("Running unit tests in ephemeral container...")
-            success, logs = run_unit_tests_in_ephemeral_container()
-        elif test_type.lower() == "all":
-            print("Running all tests sequentially...")
-            success, logs = run_all_tests_sequentially()
-        else:
-            print(f"Unknown test type: {test_type}. Defaulting to all tests...")
-            success, logs = run_all_tests_sequentially()
+        # Set up timeout signal
+        signal.signal(signal.SIGALRM, timeout_handler)
+        signal.alarm(timeout_seconds)
         
-        print("\n" + "="*50)
-        print("FINAL TEST OUTPUT:")
-        print("="*50)
-        print(logs)
-        print("="*50)
-        
-        if success:
-            print(f"\n✅ All tests completed successfully!")
-        else:
-            print(f"\n❌ Some tests failed!")
-        
-        exit(0 if success else 1)
+        try:
+            if test_type.lower() == "integration":
+                print("Running integration tests with Docker Compose...")
+                success, logs = run_integration_tests_with_docker_compose()
+            elif test_type.lower() == "selenium":
+                print("Running Selenium tests with Docker Compose...")
+                success, logs = run_selenium_tests_with_docker_compose()
+            elif test_type.lower() == "unit":
+                print("Running unit tests in ephemeral container...")
+                success, logs = run_unit_tests_in_ephemeral_container()
+            elif test_type.lower() == "all":
+                print("Running all tests sequentially...")
+                success, logs = run_all_tests_sequentially()
+            else:
+                print(f"Unknown test type: {test_type}. Defaulting to all tests...")
+                success, logs = run_all_tests_sequentially()
+            
+            # Cancel the alarm if we completed successfully
+            signal.alarm(0)
+            
+            print("\n" + "="*50)
+            print("FINAL TEST OUTPUT:")
+            print("="*50)
+            print(logs)
+            print("="*50)
+            
+            if success:
+                print(f"\n✅ All tests completed successfully!")
+            else:
+                print(f"\n❌ Some tests failed!")
+            
+            exit(0 if success else 1)
+            
+        except TimeoutError:
+            print(f"\nTest execution timed out after {timeout_seconds} seconds")
+            exit(124)
+        finally:
+            # Always cancel the alarm
+            signal.alarm(0)
         
     except BrokenPipeError:
         # Handle broken pipe gracefully
