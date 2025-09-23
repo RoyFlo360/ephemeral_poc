@@ -44,10 +44,27 @@ runs:
       with:
         python-version: '3.11'
         
+    - name: Install Python dependencies
+      run: |
+        cd ephemeral-test-suite
+        pip install --upgrade pip
+        pip install -r requirements.txt
+        echo "Installed Python packages:"
+        pip list | grep -E "(docker|pytest|psycopg2|selenium)"
+      shell: bash
+        
     - name: Install Docker Compose
       run: |
         sudo curl -L "https://github.com/docker/compose/releases/download/v2.20.0/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
         sudo chmod +x /usr/local/bin/docker-compose
+      shell: bash
+        
+    - name: Start Docker service
+      run: |
+        sudo systemctl start docker
+        sudo systemctl status docker
+        docker --version
+        docker-compose --version
       shell: bash
         
     - name: Run Tests
@@ -58,7 +75,16 @@ runs:
         ls -la ephemeral-test-suite/ || echo "Directory not found"
         echo "Checking for test_runner.py:"
         ls -la ephemeral-test-suite/test_runner.py || echo "test_runner.py not found"
+        echo "Checking for requirements.txt:"
+        ls -la ephemeral-test-suite/requirements.txt || echo "requirements.txt not found"
+
         cd ephemeral-test-suite
+        echo "Current working directory: $(pwd)"
+        echo "Python version: $(python --version)"
+        echo "Python path: $(which python)"
+        echo "Available Python packages:"
+        pip list | head -20
+        
         echo "Running ${{ inputs.test-type }} tests with timeout ${{ inputs.timeout }}s"
         
         # Set timeout for the test execution
