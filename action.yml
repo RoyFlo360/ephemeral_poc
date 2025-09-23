@@ -58,7 +58,6 @@ runs:
         ls -la ephemeral-test-suite/ || echo "Directory not found"
         echo "Checking for test_runner.py:"
         ls -la ephemeral-test-suite/test_runner.py || echo "test_runner.py not found"
-        
         cd ephemeral-test-suite
         echo "Running ${{ inputs.test-type }} tests with timeout ${{ inputs.timeout }}s"
         
