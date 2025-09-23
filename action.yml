@@ -17,6 +17,10 @@ inputs:
     description: 'Whether to upload test results as artifacts'
     required: false
     default: 'true'
+  test-repository:
+    description: 'Repository containing the test suite'
+    required: false
+    default: 'RoyFlo360/ephemeral_poc'
 
 outputs:
   success:
@@ -32,6 +36,7 @@ runs:
     - name: Checkout test repository
       uses: actions/checkout@v4
       with:
+        repository: ${{ inputs.test-repository }}
         path: ephemeral-test-suite
         
     - name: Set up Python
@@ -48,6 +53,11 @@ runs:
     - name: Run Tests
       id: run-tests
       run: |
+        echo "Current directory: $(pwd)"
+        echo "Listing ephemeral-test-suite directory:"
+        ls -la ephemeral-test-suite/ || echo "Directory not found"
+        echo "Checking for test_runner.py:"
+        ls -la ephemeral-test-suite/test_runner.py || echo "test_runner.py not found"
         cd ephemeral-test-suite
         echo "Running ${{ inputs.test-type }} tests with timeout ${{ inputs.timeout }}s"
         
