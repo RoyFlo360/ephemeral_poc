@@ -92,7 +92,14 @@ runs:
         echo "Python version: $(python --version)"
         echo "Python path: $(which python)"
         echo "Available Python packages:"
-        pip list | head -20
+        python -c "
+        import pkg_resources
+        packages = [d for d in pkg_resources.working_set]
+        for i, pkg in enumerate(packages[:20]):
+            print(f'{pkg.project_name:<20} {pkg.version}')
+        if len(packages) > 20:
+            print(f'... and {len(packages) - 20} more packages')
+        "
         
         echo "Running ${{ inputs.test-type }} tests with timeout ${{ inputs.timeout }}s"
         
