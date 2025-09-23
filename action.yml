@@ -75,9 +75,12 @@ runs:
         ls -la ephemeral-test-suite/ || echo "Directory not found"
         echo "Checking for test_runner.py:"
         ls -la ephemeral-test-suite/test_runner.py || echo "test_runner.py not found"
+<<<<<<< HEAD
         echo "Checking for requirements.txt:"
         ls -la ephemeral-test-suite/requirements.txt || echo "requirements.txt not found"
         
+=======
+>>>>>>> d289ca7ace7f0dd7673dbd956c50bae490a8fb44
         cd ephemeral-test-suite
         echo "Current working directory: $(pwd)"
         echo "Python version: $(python --version)"
