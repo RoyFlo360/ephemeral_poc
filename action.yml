@@ -35,7 +35,7 @@ runs:
         path: ephemeral-test-suite
         
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: '3.11'
         
@@ -74,7 +74,7 @@ runs:
       
     - name: Upload Test Results
       if: always() && inputs.upload-results == 'true'
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: ephemeral-test-results-${{ inputs.test-type }}
         path: ephemeral-test-suite/test-results/
