@@ -87,25 +87,58 @@ runs:
         
         echo "Running ${{ inputs.test-type }} tests with timeout ${{ inputs.timeout }}s"
         
-        # Set timeout for the test execution
-        timeout ${{ inputs.timeout }} python test_runner.py ${{ inputs.test-type }} || {
-          EXIT_CODE=$?
-          if [ $EXIT_CODE -eq 124 ]; then
-            echo "Tests timed out after ${{ inputs.timeout }} seconds"
-            echo "success=false" >> $GITHUB_OUTPUT
-            echo "logs=Tests timed out" >> $GITHUB_OUTPUT
-            exit 1
-          else
-            echo "Tests failed with exit code $EXIT_CODE"
-            echo "success=false" >> $GITHUB_OUTPUT
-            echo "logs=Tests failed with exit code $EXIT_CODE" >> $GITHUB_OUTPUT
-            exit $EXIT_CODE
-          fi
-        }
+        # Create test-results directory if it doesn't exist
+        mkdir -p test-results/integration test-results/selenium test-results/unit
         
-        # If we get here, tests passed
-        echo "success=true" >> $GITHUB_OUTPUT
-        echo "logs=All tests completed successfully" >> $GITHUB_OUTPUT
+        # Run tests with proper timeout handling and output capture
+        set +e  # Don't exit on error immediately
+        timeout ${{ inputs.timeout }} python test_runner.py ${{ inputs.test-type }} 2>&1 | tee test_output.log
+        EXIT_CODE=${PIPESTATUS[0]}
+        set -e  # Re-enable exit on error
+        
+        # Handle different exit codes
+        if [ $EXIT_CODE -eq 124 ]; then
+          echo "Tests timed out after ${{ inputs.timeout }} seconds"
+          echo "success=false" >> $GITHUB_OUTPUT
+          echo "logs=Tests timed out after ${{ inputs.timeout }} seconds" >> $GITHUB_OUTPUT
+          exit 1
+        elif [ $EXIT_CODE -eq 0 ]; then
+          echo "Tests completed successfully"
+          echo "success=true" >> $GITHUB_OUTPUT
+          echo "logs=All tests completed successfully" >> $GITHUB_OUTPUT
+        else
+          echo "Tests failed with exit code $EXIT_CODE"
+          echo "success=false" >> $GITHUB_OUTPUT
+          echo "logs=Tests failed with exit code $EXIT_CODE" >> $GITHUB_OUTPUT
+          # Show the test output for debugging
+          if [ -f test_output.log ]; then
+            echo "Test output:"
+            cat test_output.log
+          fi
+          exit $EXIT_CODE
+        fi
+      shell: bash
+      
+    - name: Prepare Test Results for Upload
+      if: always() && inputs.upload-results == 'true'
+      run: |
+        cd ephemeral-test-suite
+        echo "Checking test-results directory..."
+        ls -la test-results/ || echo "test-results directory not found"
+        
+        # Create a summary file if no results exist
+        if [ ! -f test-results/integration/results.xml ] && [ ! -f test-results/selenium/results.xml ] && [ ! -f test-results/unit/results.xml ]; then
+          echo "No test result files found, creating summary..."
+          mkdir -p test-results/summary
+          echo "Test execution completed at $(date)" > test-results/summary/execution-summary.txt
+          echo "Test type: ${{ inputs.test-type }}" >> test-results/summary/execution-summary.txt
+          echo "Exit code: ${{ steps.run-tests.outcome }}" >> test-results/summary/execution-summary.txt
+        fi
+        
+        # Ensure there's always something to upload
+        touch test-results/.gitkeep
+        echo "Test results directory contents:"
+        find test-results/ -type f -exec echo "File: {}" \; -exec head -5 {} \;
       shell: bash
       
     - name: Upload Test Results
