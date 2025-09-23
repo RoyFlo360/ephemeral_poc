@@ -42,7 +42,7 @@ runs:
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
-        python-version: '3.11'
+        python-version: '3.9'
         
     - name: Install Python dependencies
       run: |
@@ -90,11 +90,11 @@ runs:
         # Create test-results directory if it doesn't exist
         mkdir -p test-results/integration test-results/selenium test-results/unit
         
-        # Run tests with proper timeout handling and output capture
-        set +e  # Don't exit on error immediately
-        timeout ${{ inputs.timeout }} python test_runner.py ${{ inputs.test-type }} 2>&1 | tee test_output.log
-        EXIT_CODE=${PIPESTATUS[0]}
-        set -e  # Re-enable exit on error
+        # Run tests with Python's internal timeout handling (no shell timeout)
+        # Set PYTHONUNBUFFERED to prevent broken pipe issues
+        export PYTHONUNBUFFERED=1
+        python test_runner.py ${{ inputs.test-type }} ${{ inputs.timeout }}
+        EXIT_CODE=$?
         
         # Handle different exit codes
         if [ $EXIT_CODE -eq 124 ]; then
@@ -110,11 +110,6 @@ runs:
           echo "Tests failed with exit code $EXIT_CODE"
           echo "success=false" >> $GITHUB_OUTPUT
           echo "logs=Tests failed with exit code $EXIT_CODE" >> $GITHUB_OUTPUT
-          # Show the test output for debugging
-          if [ -f test_output.log ]; then
-            echo "Test output:"
-            cat test_output.log
-          fi
           exit $EXIT_CODE
         fi
       shell: bash
